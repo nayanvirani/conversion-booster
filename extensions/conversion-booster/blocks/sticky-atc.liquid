@@ -1,0 +1,60 @@
+{%- if request.page_type == 'product' and product != blank -%}
+{{ 'cb-core.css' | asset_url | stylesheet_tag }}
+
+<div class="cb-satc" id="cb-satc-{{ block.id }}" aria-hidden="true">
+  {%- if product.featured_image -%}
+    <img class="cb-satc__img" src="{{ product.featured_image | image_url: width: 88 }}" alt="" width="44" height="44" loading="lazy">
+  {%- endif -%}
+  <div class="cb-satc__info">
+    <p class="cb-satc__title">{{ product.title }}</p>
+    <span class="cb-satc__price" data-cb-price>{{ product.selected_or_first_available_variant.price | money }}</span>
+  </div>
+
+  {%- if product.variants.size > 1 -%}
+    <select class="cb-satc__variants" data-cb-variants aria-label="Select variant">
+      {%- for variant in product.variants -%}
+        <option
+          value="{{ variant.id }}"
+          data-price="{{ variant.price | money }}"
+          {% unless variant.available %}disabled{% endunless %}
+          {% if variant == product.selected_or_first_available_variant %}selected{% endif %}
+        >{{ variant.title }}</option>
+      {%- endfor -%}
+    </select>
+  {%- else -%}
+    <input type="hidden" data-cb-variants value="{{ product.selected_or_first_available_variant.id }}">
+  {%- endif -%}
+
+  <button
+    class="cb-satc__btn"
+    type="button"
+    data-cb-add
+    style="background:{{ block.settings.btn_color }};"
+    {% unless product.available %}disabled{% endunless %}
+  >
+    {%- if product.available -%}{{ block.settings.btn_text }}{%- else -%}Sold out{%- endif -%}
+  </button>
+</div>
+<script src="{{ 'cb-sticky-atc.js' | asset_url }}" defer></script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Sticky Add to Cart",
+  "target": "body",
+  "settings": [
+    { "type": "text", "id": "btn_text", "label": "Button text", "default": "Add to cart" },
+    { "type": "color", "id": "btn_color", "label": "Button color", "default": "#111111" },
+    {
+      "type": "select",
+      "id": "after_add",
+      "label": "After adding to cart",
+      "options": [
+        { "value": "stay", "label": "Stay on page (show confirmation)" },
+        { "value": "cart", "label": "Go to cart page" }
+      ],
+      "default": "stay"
+    }
+  ]
+}
+{% endschema %}

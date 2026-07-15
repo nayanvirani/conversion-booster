@@ -1,0 +1,44 @@
+{{ 'cb-core.css' | asset_url | stylesheet_tag }}
+
+{%- capture icon_shield -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+{%- endcapture -%}
+{%- capture icon_truck -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6H1v12h2"/><path d="M14 9h4l4 4v5h-2"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+{%- endcapture -%}
+{%- capture icon_return -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+{%- endcapture -%}
+{%- capture icon_chat -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4l1.5-3A8 8 0 1 1 21 12z"/></svg>
+{%- endcapture -%}
+
+<ul class="cb-trust" style="color:{{ block.settings.color }};font-size:{{ block.settings.font_size }}px;" aria-label="Store guarantees">
+  {%- if block.settings.badge_1 != blank -%}
+    <li class="cb-trust__item">{{ icon_shield }}{{ block.settings.badge_1 }}</li>
+  {%- endif -%}
+  {%- if block.settings.badge_2 != blank -%}
+    <li class="cb-trust__item">{{ icon_truck }}{{ block.settings.badge_2 }}</li>
+  {%- endif -%}
+  {%- if block.settings.badge_3 != blank -%}
+    <li class="cb-trust__item">{{ icon_return }}{{ block.settings.badge_3 }}</li>
+  {%- endif -%}
+  {%- if block.settings.badge_4 != blank -%}
+    <li class="cb-trust__item">{{ icon_chat }}{{ block.settings.badge_4 }}</li>
+  {%- endif -%}
+</ul>
+
+{% schema %}
+{
+  "name": "Trust Badges",
+  "target": "section",
+  "settings": [
+    { "type": "text", "id": "badge_1", "label": "Badge 1 (shield icon)", "default": "Secure checkout" },
+    { "type": "text", "id": "badge_2", "label": "Badge 2 (truck icon)", "default": "Fast delivery" },
+    { "type": "text", "id": "badge_3", "label": "Badge 3 (returns icon)", "default": "Easy 30-day returns" },
+    { "type": "text", "id": "badge_4", "label": "Badge 4 (chat icon)", "default": "24/7 support" },
+    { "type": "color", "id": "color", "label": "Color", "default": "#333333" },
+    { "type": "range", "id": "font_size", "label": "Font size", "min": 11, "max": 16, "step": 1, "default": 13 }
+  ]
+}
+{% endschema %}

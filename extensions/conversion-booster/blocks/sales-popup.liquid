@@ -1,0 +1,34 @@
+{{ 'cb-core.css' | asset_url | stylesheet_tag }}
+
+<div
+  id="cb-pop-config"
+  hidden
+  data-collection="{{ block.settings.collection | default: 'all' }}"
+  data-eyebrow="{{ block.settings.eyebrow | escape }}"
+  data-eyebrow-color="{{ block.settings.accent_color }}"
+  data-first-delay="{{ block.settings.first_delay | times: 1000 }}"
+  data-gap="{{ block.settings.gap_seconds | times: 1000 }}"
+  data-show-ms="{{ block.settings.show_seconds | times: 1000 }}"
+  data-max="{{ block.settings.max_popups }}"
+></div>
+<script src="{{ 'cb-popup.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Social Proof Popup",
+  "target": "body",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Shows rotating popups featuring real products from a collection — e.g. your best sellers. Point it at a collection like 'best-sellers' or leave as 'all'."
+    },
+    { "type": "text", "id": "collection", "label": "Collection handle", "default": "all", "info": "The part after /collections/ in the URL" },
+    { "type": "text", "id": "eyebrow", "label": "Popup label", "default": "🔥 Popular right now" },
+    { "type": "color", "id": "accent_color", "label": "Label color", "default": "#c1121f" },
+    { "type": "range", "id": "first_delay", "label": "First popup after (seconds)", "min": 3, "max": 30, "step": 1, "default": 8 },
+    { "type": "range", "id": "show_seconds", "label": "Show each popup for (seconds)", "min": 3, "max": 10, "step": 1, "default": 5 },
+    { "type": "range", "id": "gap_seconds", "label": "Gap between popups (seconds)", "min": 10, "max": 120, "step": 5, "default": 25 },
+    { "type": "range", "id": "max_popups", "label": "Max popups per visit", "min": 1, "max": 10, "step": 1, "default": 4 }
+  ]
+}
+{% endschema %}

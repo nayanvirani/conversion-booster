@@ -1,0 +1,45 @@
+name = "Conversion Booster"
+client_id = ""
+application_url = "https://YOUR-APP.up.railway.app"
+embedded = true
+
+# After deploying to Railway, replace YOUR-APP with your Railway subdomain,
+# then run: shopify app deploy
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = ""
+
+[access_scopes]
+scopes = "read_products"
+
+[auth]
+redirect_urls = [
+  "https://YOUR-APP.up.railway.app/auth/callback",
+  "https://YOUR-APP.up.railway.app/auth/shopify/callback",
+  "https://YOUR-APP.up.railway.app/api/auth/callback",
+  "http://localhost/auth/callback",
+  "http://localhost/auth/shopify/callback"
+]
+
+[webhooks]
+api_version = "2025-04"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = ["customers/data_request"]
+  uri = "/webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = ["customers/redact"]
+  uri = "/webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = ["shop/redact"]
+  uri = "/webhooks"
+
+[pos]
+embedded = false

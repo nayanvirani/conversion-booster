@@ -1,0 +1,61 @@
+{{ 'cb-core.css' | asset_url | stylesheet_tag }}
+
+{%- liquid
+  assign messages = ''
+  if block.settings.msg_1 != blank
+    assign messages = block.settings.msg_1
+  endif
+  if block.settings.msg_2 != blank
+    assign messages = messages | append: '|||' | append: block.settings.msg_2
+  endif
+  if block.settings.msg_3 != blank
+    assign messages = messages | append: '|||' | append: block.settings.msg_3
+  endif
+-%}
+
+{%- if messages != blank -%}
+<div
+  class="cb-bar{% if block.settings.sticky %} cb-bar--sticky{% endif %}"
+  id="cb-bar-{{ block.id }}"
+  style="background:{{ block.settings.bg_color }};color:{{ block.settings.text_color }};font-size:{{ block.settings.font_size }}px;"
+  data-messages="{{ messages | escape }}"
+  data-interval="{{ block.settings.rotate_seconds | times: 1000 }}"
+  {% if block.settings.msg_2 != blank %}data-rotating{% endif %}
+  role="region"
+  aria-label="Announcement"
+>
+  <p class="cb-bar__msg" aria-live="polite">{{ block.settings.msg_1 }}</p>
+
+  {%- if block.settings.cta_text != blank and block.settings.cta_link != blank -%}
+    <a class="cb-bar__cta" href="{{ block.settings.cta_link }}">{{ block.settings.cta_text }}</a>
+  {%- endif -%}
+
+  {%- if block.settings.dismissible -%}
+    <button class="cb-bar__close" type="button" aria-label="Close announcement">&times;</button>
+  {%- endif -%}
+</div>
+<script src="{{ 'cb-announcement.js' | asset_url }}" defer></script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Announcement Bar",
+  "target": "body",
+  "settings": [
+    { "type": "header", "content": "Messages (bar rotates if more than one)" },
+    { "type": "text", "id": "msg_1", "label": "Message 1", "default": "Free shipping on orders over $50 🚚" },
+    { "type": "text", "id": "msg_2", "label": "Message 2 (optional)" },
+    { "type": "text", "id": "msg_3", "label": "Message 3 (optional)" },
+    { "type": "range", "id": "rotate_seconds", "label": "Seconds per message", "min": 3, "max": 10, "step": 1, "default": 5 },
+    { "type": "header", "content": "Button (optional)" },
+    { "type": "text", "id": "cta_text", "label": "Button text" },
+    { "type": "url", "id": "cta_link", "label": "Button link" },
+    { "type": "header", "content": "Style & behavior" },
+    { "type": "color", "id": "bg_color", "label": "Background", "default": "#1a1a2e" },
+    { "type": "color", "id": "text_color", "label": "Text", "default": "#ffffff" },
+    { "type": "range", "id": "font_size", "label": "Font size", "min": 12, "max": 18, "step": 1, "default": 14 },
+    { "type": "checkbox", "id": "sticky", "label": "Stick to top while scrolling", "default": false },
+    { "type": "checkbox", "id": "dismissible", "label": "Show close button", "default": true }
+  ]
+}
+{% endschema %}

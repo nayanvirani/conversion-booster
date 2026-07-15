@@ -1,0 +1,6 @@
+api_version = "2025-04"
+
+[[extensions]]
+type = "theme"
+name = "Conversion Booster"
+handle = "conversion-booster"

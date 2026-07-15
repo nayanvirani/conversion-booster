@@ -1,0 +1,58 @@
+{{ 'cb-core.css' | asset_url | stylesheet_tag }}
+
+<div
+  class="cb-count"
+  id="cb-count-{{ block.id }}"
+  style="background:{{ block.settings.bg_color }};color:{{ block.settings.text_color }};"
+  data-mode="{{ block.settings.mode }}"
+  data-end="{{ block.settings.end_date }}T{{ block.settings.end_time | default: '23:59' }}"
+  data-evergreen-minutes="{{ block.settings.evergreen_minutes }}"
+  data-expired-action="{{ block.settings.expired_action }}"
+  data-expired-text="{{ block.settings.expired_text | escape }}"
+  role="timer"
+>
+  <span class="cb-count__label">{{ block.settings.label }}</span>
+  <span class="cb-count__units">
+    <span class="cb-count__unit"><span class="cb-count__num" data-u="d">--</span><span class="cb-count__word">Days</span></span>
+    <span class="cb-count__unit"><span class="cb-count__num" data-u="h">--</span><span class="cb-count__word">Hrs</span></span>
+    <span class="cb-count__unit"><span class="cb-count__num" data-u="m">--</span><span class="cb-count__word">Min</span></span>
+    <span class="cb-count__unit"><span class="cb-count__num" data-u="s">--</span><span class="cb-count__word">Sec</span></span>
+  </span>
+</div>
+<script src="{{ 'cb-countdown.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "Countdown Timer",
+  "target": "section",
+  "settings": [
+    { "type": "text", "id": "label", "label": "Label", "default": "Sale ends in" },
+    {
+      "type": "select",
+      "id": "mode",
+      "label": "Timer type",
+      "options": [
+        { "value": "fixed", "label": "Fixed end date (same for everyone)" },
+        { "value": "evergreen", "label": "Evergreen (restarts per visitor)" }
+      ],
+      "default": "fixed"
+    },
+    { "type": "text", "id": "end_date", "label": "End date (YYYY-MM-DD)", "info": "Used for fixed timers", "default": "2026-12-31" },
+    { "type": "text", "id": "end_time", "label": "End time (HH:MM, 24h)", "default": "23:59" },
+    { "type": "range", "id": "evergreen_minutes", "label": "Evergreen duration (minutes)", "min": 5, "max": 240, "step": 5, "default": 30 },
+    {
+      "type": "select",
+      "id": "expired_action",
+      "label": "When timer ends",
+      "options": [
+        { "value": "hide", "label": "Hide the timer" },
+        { "value": "message", "label": "Show a message" }
+      ],
+      "default": "hide"
+    },
+    { "type": "text", "id": "expired_text", "label": "Expired message", "default": "Offer has ended" },
+    { "type": "color", "id": "bg_color", "label": "Background", "default": "#fff3f0" },
+    { "type": "color", "id": "text_color", "label": "Text", "default": "#c1121f" }
+  ]
+}
+{% endschema %}
