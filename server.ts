@@ -23,6 +23,7 @@ const build = viteDevServer
       ) as Promise<ServerBuild>
   : ((await import("./build/server/index.js")) as unknown as ServerBuild);
 
+app.get("/health", (_req, res) => res.sendStatus(200));
 app.all("*", createRequestHandler({ build }));
 
 const port = parseInt(process.env.PORT || "3000");
