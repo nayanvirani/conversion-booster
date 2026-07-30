@@ -6,8 +6,7 @@ import {
   LATEST_API_VERSION,
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
-import { SQLiteSessionStorage } from "@shopify/shopify-app-session-storage-sqlite";
-import { join } from "path";
+import { PostgreSQLSessionStorage } from "./session-storage.server";
 
 export const PLANS = {
   PRO: "Pro Plan",
@@ -20,9 +19,7 @@ const shopify = shopifyApp({
   scopes: process.env.SCOPES?.split(","),
   appUrl: process.env.SHOPIFY_APP_URL || "",
   authPathPrefix: "/auth",
-  sessionStorage: new SQLiteSessionStorage(
-    process.env.DATABASE_PATH || join(process.cwd(), "database.sqlite")
-  ),
+  sessionStorage: new PostgreSQLSessionStorage(),
   distribution: AppDistribution.AppStore,
   billing: {
     [PLANS.PRO]: {
