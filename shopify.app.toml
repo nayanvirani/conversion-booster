@@ -1,5 +1,7 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "ec06cc05223016dfded77db4346c3d49"
 name = "Conversion Booster"
-client_id = "5a9340e613f63415de1b703426d47ba6"
 application_url = "https://conversion-booster-production.up.railway.app"
 embedded = true
 
@@ -7,7 +9,15 @@ embedded = true
 automatically_update_urls_on_dev = true
 dev_store_url = ""
 
+[webhooks]
+api_version = "2025-04"
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks"
+  topics = [ "app/uninstalled" ]
+
 [access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_products"
 
 [auth]
@@ -18,13 +28,6 @@ redirect_urls = [
   "http://localhost/auth/callback",
   "http://localhost/auth/shopify/callback"
 ]
-
-[webhooks]
-api_version = "2025-04"
-
-  [[webhooks.subscriptions]]
-  topics = ["app/uninstalled"]
-  uri = "/webhooks"
 
 [pos]
 embedded = false
