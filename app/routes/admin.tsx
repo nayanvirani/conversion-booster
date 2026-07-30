@@ -43,10 +43,7 @@ export default function Admin() {
 
         {error && (
           <div style={S.errorBanner}>
-            <strong>Database not connected.</strong>{" "}
-            {error.includes("DATABASE_URL")
-              ? "Add a PostgreSQL service in Railway and link its DATABASE_URL variable to this app service, then redeploy."
-              : error}
+            <strong>Database error:</strong> {error}
           </div>
         )}
 
@@ -112,9 +109,10 @@ export default function Admin() {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatExpires(ts: string | null): string {
+function formatExpires(ts: string | number | null): string {
   if (!ts) return "—";
-  const d = new Date(ts);
+  // SQLite stores expires as a Unix timestamp (seconds)
+  const d = new Date(Number(ts) * 1000);
   if (isNaN(d.getTime())) return "—";
   if (d.getFullYear() > 2100) return "No expiry";
   return d.toLocaleString("en-GB", {
