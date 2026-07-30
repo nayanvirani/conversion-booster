@@ -42,6 +42,12 @@ const build = viteDevServer
       ) as Promise<ServerBuild>
   : ((await import("./build/server/index.js")) as unknown as ServerBuild);
 
+// Logout endpoint — always returns 401 to clear the browser's cached Basic Auth credentials
+app.get("/admin-logout", (_req, res) => {
+  res.set("WWW-Authenticate", 'Basic realm="Conversion Booster Admin"');
+  res.status(401).send("Logged out.");
+});
+
 app.get("/health", (_req, res) => res.sendStatus(200));
 app.all("*", createRequestHandler({ build }));
 

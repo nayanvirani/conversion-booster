@@ -30,8 +30,20 @@ export default function Admin() {
           <span style={S.headerTitle}>Conversion Booster</span>
           <span style={S.headerBadge}>Admin</span>
         </div>
-        <a href="/admin/export" style={S.exportBtn}>↓ Export CSV</a>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <a href="/admin/export" style={S.exportBtn}>↓ Export CSV</a>
+          <button onClick={() => (window as any).handleLogout()} style={S.logoutBtn}>Sign out</button>
+        </div>
       </header>
+      <script dangerouslySetInnerHTML={{ __html: `
+        function handleLogout() {
+          // Send a request with intentionally wrong credentials to clear the browser cache
+          var xhr = new XMLHttpRequest();
+          xhr.open('GET', '/admin-logout', false, '__logout__', '__logout__');
+          try { xhr.send(); } catch(e) {}
+          window.location.replace('/');
+        }
+      `}} />
 
       <main style={S.main}>
         {/* Stats */}
@@ -159,6 +171,11 @@ const S: Record<string, React.CSSProperties> = {
   exportBtn: {
     background: "#22D47E", color: "#0B1730", fontSize: 13, fontWeight: 700,
     padding: "7px 18px", borderRadius: 8, textDecoration: "none",
+  },
+  logoutBtn: {
+    background: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.65)",
+    border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8,
+    padding: "7px 14px", fontSize: 13, cursor: "pointer",
   },
   main: { maxWidth: 1200, margin: "0 auto", padding: "32px 24px" },
   statsRow: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginBottom: 28 },
