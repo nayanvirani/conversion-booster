@@ -26,10 +26,5 @@ api_version = "2025-04"
   topics = ["app/uninstalled"]
   uri = "/webhooks"
 
-[privacy_compliance]
-  customer_data_request_url = "https://conversion-booster-production.up.railway.app/webhooks"
-  customer_data_erasure_url = "https://conversion-booster-production.up.railway.app/webhooks"
-  shop_data_erasure_url = "https://conversion-booster-production.up.railway.app/webhooks"
-
 [pos]
 embedded = false
