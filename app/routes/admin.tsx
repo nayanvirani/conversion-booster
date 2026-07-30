@@ -41,7 +41,14 @@ export default function Admin() {
           <StatCard label="No Token" value={total - withToken} color="#B91C1C" />
         </div>
 
-        {error && <div style={S.errorBanner}><strong>Error:</strong> {error}</div>}
+        {error && (
+          <div style={S.errorBanner}>
+            <strong>Database not connected.</strong>{" "}
+            {error.includes("DATABASE_URL")
+              ? "Add a PostgreSQL service in Railway and link its DATABASE_URL variable to this app service, then redeploy."
+              : error}
+          </div>
+        )}
 
         {/* Table */}
         <div style={S.card}>
