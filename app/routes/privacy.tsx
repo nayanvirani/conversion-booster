@@ -119,7 +119,7 @@ export default function Privacy() {
         <h2>10. Contact</h2>
         <p>
           If you have questions about this Privacy Policy or want to request data deletion, please contact us at:{" "}
-          <a href="mailto:virani.nayan@gmail.com">virani.nayan@gmail.com</a>.
+          <a href="mailto:viraninayan518@gmail.com">viraninayan518@gmail.com</a>.
         </p>
 
         <hr />
