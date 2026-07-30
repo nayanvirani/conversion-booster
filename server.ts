@@ -12,6 +12,25 @@ const viteDevServer =
       );
 
 const app = express();
+
+// HTTP Basic Auth for /admin routes
+app.use("/admin", (req, res, next) => {
+  const secret = process.env.ADMIN_SECRET;
+  if (!secret) {
+    res.status(503).send("ADMIN_SECRET is not configured.");
+    return;
+  }
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith("Basic ")) {
+    const decoded = Buffer.from(auth.slice(6), "base64").toString("utf8");
+    const colon = decoded.indexOf(":");
+    const pass = colon >= 0 ? decoded.slice(colon + 1) : decoded;
+    if (pass === secret) return next();
+  }
+  res.set("WWW-Authenticate", 'Basic realm="Conversion Booster Admin"');
+  res.status(401).send("Authentication required.");
+});
+
 app.use(
   viteDevServer ? viteDevServer.middlewares : express.static("build/client")
 );
