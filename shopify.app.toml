@@ -10,7 +10,7 @@ automatically_update_urls_on_dev = true
 dev_store_url = ""
 
 [webhooks]
-api_version = "2025-04"
+api_version = "2025-10"
 
   [[webhooks.subscriptions]]
   uri = "/webhooks"
