@@ -13,10 +13,13 @@ const APP_STORE_URL = "https://apps.shopify.com/conversion-booster";
 
 function Logo() {
   return (
-    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
-      <rect width="30" height="30" rx="8" fill="var(--accent)" />
-      <path d="M9 15h12M15 9v12" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" />
-    </svg>
+    <img
+      src="/logo.png"
+      alt="Conversion Booster"
+      width={32}
+      height={32}
+      style={{ borderRadius: 7, display: "block", flexShrink: 0 }}
+    />
   );
 }
 
@@ -302,8 +305,8 @@ const CSS = `
   --surface2:  #EFECEA;
   --text:      #18150F;
   --muted:     #7B7367;
-  --accent:    #D94F24;
-  --accent-bg: #FAF0EC;
+  --accent:    #1B8FEA;
+  --accent-bg: #EBF5FF;
   --border:    #E3DDD5;
   --green:     #1A7048;
   --green-bg:  #EBF5EF;
@@ -321,8 +324,8 @@ const CSS = `
     --surface2:  #211E1A;
     --text:      #F0EBE5;
     --muted:     #9A8F83;
-    --accent:    #F0633A;
-    --accent-bg: #2A1508;
+    --accent:    #3BAAFF;
+    --accent-bg: #0B2A42;
     --border:    #2E2824;
     --green:     #4ABA7A;
     --green-bg:  #0D2318;
@@ -332,12 +335,12 @@ const CSS = `
 }
 :root[data-theme="dark"] {
   --bg:#110F0D;--surface:#1C1916;--surface2:#211E1A;--text:#F0EBE5;
-  --muted:#9A8F83;--accent:#F0633A;--accent-bg:#2A1508;--border:#2E2824;
+  --muted:#9A8F83;--accent:#3BAAFF;--accent-bg:#0B2A42;--border:#2E2824;
   --green:#4ABA7A;--green-bg:#0D2318;--blue:#849BF0;--blue-bg:#111D40;
 }
 :root[data-theme="light"] {
   --bg:#F5F3EF;--surface:#FFFFFF;--surface2:#EFECEA;--text:#18150F;
-  --muted:#7B7367;--accent:#D94F24;--accent-bg:#FAF0EC;--border:#E3DDD5;
+  --muted:#7B7367;--accent:#1B8FEA;--accent-bg:#EBF5FF;--border:#E3DDD5;
   --green:#1A7048;--green-bg:#EBF5EF;--blue:#2D4DB8;--blue-bg:#EEF1FB;
 }
 
@@ -485,7 +488,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 }
 .mk-satc span:first-child{font-size:.6rem;color:#7B7367}
 .mk-satc button{
-  background:#D94F24;color:#fff;border-radius:4px;
+  background:#1B8FEA;color:#fff;border-radius:4px;
   padding:.22rem .6rem;font-size:.63rem;font-weight:600;cursor:default;
 }
 .mk-popup{
