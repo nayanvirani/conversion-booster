@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "ec06cc05223016dfded77db4346c3d49"
-name = "Conversion Booster"
+name = "Boostify"
 application_url = "https://conversion-booster-production.up.railway.app"
 embedded = true
 
