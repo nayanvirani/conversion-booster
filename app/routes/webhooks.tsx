@@ -1,24 +1,38 @@
 import type { ActionFunctionArgs } from "@remix-run/node";
+import sqlite3 from "sqlite3";
+import { join } from "path";
 import { authenticate } from "../shopify.server";
 
+function deleteShopSessions(shop: string): Promise<void> {
+  return new Promise((resolve) => {
+    const dbPath = process.env.DATABASE_PATH || join(process.cwd(), "database.sqlite");
+    const db = new sqlite3.Database(dbPath, (err) => {
+      if (err) return resolve();
+    });
+    db.run(
+      "DELETE FROM shopify_sessions WHERE shop = ?",
+      [shop],
+      () => { db.close(); resolve(); }
+    );
+  });
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { topic, shop, session } = await authenticate.webhook(request);
+  const { topic, shop } = await authenticate.webhook(request);
 
   switch (topic) {
     case "APP_UNINSTALLED":
-      // Session is automatically cleaned up by SQLiteSessionStorage
-      // when the shop uninstalls. No extra work needed for this MVP.
+      await deleteShopSessions(shop);
       break;
 
     case "CUSTOMERS_DATA_REQUEST":
     case "CUSTOMERS_REDACT":
-      // This app stores no customer PII on its own servers.
-      // All widget settings live in the merchant's theme — Shopify owns that data.
+      // This app stores no customer PII — widget settings live in the merchant's theme.
       break;
 
     case "SHOP_REDACT":
-      // All data for this shop lives in the SQLite session file.
-      // The session is removed by the APP_UNINSTALLED webhook above.
+      // Delete all sessions for this shop from our database.
+      await deleteShopSessions(shop);
       break;
 
     default:

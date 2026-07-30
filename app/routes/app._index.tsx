@@ -18,7 +18,7 @@ import { authenticate, PLANS } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { billing } = await authenticate.admin(request);
-  const { hasActivePayment } = await billing.check({ isTest: true });
+  const { hasActivePayment } = await billing.check({ isTest: false });
   return json({ isPro: hasActivePayment });
 };
 

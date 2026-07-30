@@ -18,7 +18,7 @@ import { authenticate, PLANS } from "../shopify.server";
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { billing } = await authenticate.admin(request);
   const { hasActivePayment, appSubscriptions } = await billing.check({
-    isTest: true,
+    isTest: false,
   });
   return json({ isPro: hasActivePayment, subscriptions: appSubscriptions });
 };
@@ -27,7 +27,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const { billing } = await authenticate.admin(request);
   await billing.request({
     plan: PLANS.PRO as never,
-    isTest: true,
+    isTest: false,
     returnUrl: `${process.env.SHOPIFY_APP_URL}/app`,
   });
   return null;
