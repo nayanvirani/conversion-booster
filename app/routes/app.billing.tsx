@@ -17,10 +17,14 @@ import { authenticate, PLANS } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { billing } = await authenticate.admin(request);
-  const { hasActivePayment, appSubscriptions } = await billing.check({
-    isTest: false,
-  });
-  return json({ isPro: hasActivePayment, subscriptions: appSubscriptions });
+  try {
+    const { hasActivePayment, appSubscriptions } = await billing.check({
+      isTest: false,
+    });
+    return json({ isPro: hasActivePayment, subscriptions: appSubscriptions });
+  } catch {
+    return json({ isPro: false, subscriptions: [] });
+  }
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
