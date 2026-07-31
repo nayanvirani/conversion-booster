@@ -60,7 +60,7 @@ export default function BillingPage() {
                 <List.Item>Announcement Bar</List.Item>
                 <List.Item>Trust Badges</List.Item>
                 <List.Item>Countdown Timer</List.Item>
-                <List.Item>"Powered by Conversion Booster" branding</List.Item>
+                <List.Item>"Powered by Boostify" branding</List.Item>
               </List>
             </BlockStack>
           </Card>

@@ -27,7 +27,7 @@ app.use("/admin", (req, res, next) => {
     const pass = colon >= 0 ? decoded.slice(colon + 1) : decoded;
     if (pass === secret) return next();
   }
-  res.set("WWW-Authenticate", 'Basic realm="Conversion Booster Admin"');
+  res.set("WWW-Authenticate", 'Basic realm="Boostify Admin"');
   res.status(401).send("Authentication required.");
 });
 
@@ -44,7 +44,7 @@ const build = viteDevServer
 
 // Logout endpoint — always returns 401 to clear the browser's cached Basic Auth credentials
 app.get("/admin-logout", (_req, res) => {
-  res.set("WWW-Authenticate", 'Basic realm="Conversion Booster Admin"');
+  res.set("WWW-Authenticate", 'Basic realm="Boostify Admin"');
   res.status(401).send("Logged out.");
 });
 
@@ -53,5 +53,5 @@ app.all("*", createRequestHandler({ build }));
 
 const port = parseInt(process.env.PORT || "3000");
 app.listen(port, () => {
-  console.log(`Conversion Booster listening on http://localhost:${port}`);
+  console.log(`Boostify listening on http://localhost:${port}`);
 });

@@ -1,7 +1,7 @@
 import type { MetaFunction } from "@remix-run/node";
 
 export const meta: MetaFunction = () => [
-  { title: "Conversion Booster — 5 Shopify Widgets, One Install" },
+  { title: "Boostify — 5 Shopify Widgets, One Install" },
   {
     name: "description",
     content:
@@ -15,7 +15,7 @@ function Logo() {
   return (
     <img
       src="/logo.png"
-      alt="Conversion Booster"
+      alt="Boostify"
       width={32}
       height={32}
       style={{ borderRadius: 7, display: "block", flexShrink: 0 }}
@@ -91,7 +91,7 @@ export default function Index() {
         <header className="nav">
           <a href="/" className="nav__brand">
             <Logo />
-            <span className="nav__name">Conversion Booster</span>
+            <span className="nav__name">Boostify</span>
           </a>
           <nav className="nav__links" aria-label="Site navigation">
             <a href="#widgets">Widgets</a>
@@ -284,7 +284,7 @@ export default function Index() {
           <div className="footer__inner">
             <a href="/" className="nav__brand">
               <Logo />
-              <span className="nav__name">Conversion Booster</span>
+              <span className="nav__name">Boostify</span>
             </a>
             <p className="footer__line">
               Built for Shopify merchants who want more sales without more apps.

@@ -59,7 +59,7 @@ export default function Index() {
   const { isPro } = useLoaderData<typeof loader>();
 
   return (
-    <Page title="Conversion Booster">
+    <Page title="Boostify">
       <BlockStack gap="500">
         {!isPro && (
           <Banner
@@ -113,7 +113,7 @@ export default function Index() {
                   </Text>
                   <Text as="p" variant="bodyMd">
                     Open any page section and click{" "}
-                    <strong>Add block → Conversion Booster</strong>:
+                    <strong>Add block → Boostify</strong>:
                   </Text>
                   <List>
                     <List.Item>

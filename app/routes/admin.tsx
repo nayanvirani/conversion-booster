@@ -3,7 +3,7 @@ import { useLoaderData } from "@remix-run/react";
 import { getShops, type ShopRow } from "../admin.server";
 
 export const meta: MetaFunction = () => [
-  { title: "Admin — Conversion Booster" },
+  { title: "Admin — Boostify" },
 ];
 
 export async function loader({ request: _ }: LoaderFunctionArgs) {
@@ -27,7 +27,7 @@ export default function Admin() {
       <header style={S.header}>
         <div style={S.headerLeft}>
           <img src="/logo.png" alt="" width={32} height={32} style={{ borderRadius: 8 }} />
-          <span style={S.headerTitle}>Conversion Booster</span>
+          <span style={S.headerTitle}>Boostify</span>
           <span style={S.headerBadge}>Admin</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
