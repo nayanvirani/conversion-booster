@@ -11,75 +11,120 @@
 {%- capture icon_fire -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"/></svg>{%- endcapture -%}
 {%- capture icon_check -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>{%- endcapture -%}
 
-<ul class="cb-trust" style="color:{{ block.settings.color }};font-size:{{ block.settings.font_size }}px;" aria-label="Store guarantees">
+{%- assign bid = block.id -%}
+
+<style>
+  #cb-trust-{{ bid }} .cb-trust__item svg,
+  #cb-trust-{{ bid }} .cb-trust__img {
+    width: {{ block.settings.icon_size_desktop }}px;
+    height: {{ block.settings.icon_size_desktop }}px;
+  }
+  @media (max-width: 768px) {
+    #cb-trust-{{ bid }} .cb-trust__item svg,
+    #cb-trust-{{ bid }} .cb-trust__img {
+      width: {{ block.settings.icon_size_tablet }}px;
+      height: {{ block.settings.icon_size_tablet }}px;
+    }
+  }
+  @media (max-width: 480px) {
+    #cb-trust-{{ bid }} .cb-trust__item svg,
+    #cb-trust-{{ bid }} .cb-trust__img {
+      width: {{ block.settings.icon_size_mobile }}px;
+      height: {{ block.settings.icon_size_mobile }}px;
+    }
+  }
+</style>
+
+<ul id="cb-trust-{{ bid }}" class="cb-trust" style="color:{{ block.settings.color }};font-size:{{ block.settings.font_size }}px;" aria-label="Store guarantees">
+
   {%- if block.settings.badge_1 != blank -%}
     <li class="cb-trust__item">
-      {%- case block.settings.icon_1 -%}
-        {%- when 'shield' -%}{{ icon_shield }}
-        {%- when 'truck' -%}{{ icon_truck }}
-        {%- when 'return' -%}{{ icon_return }}
-        {%- when 'chat' -%}{{ icon_chat }}
-        {%- when 'star' -%}{{ icon_star }}
-        {%- when 'lock' -%}{{ icon_lock }}
-        {%- when 'heart' -%}{{ icon_heart }}
-        {%- when 'clock' -%}{{ icon_clock }}
-        {%- when 'fire' -%}{{ icon_fire }}
-        {%- when 'check' -%}{{ icon_check }}
-      {%- endcase -%}
+      {%- if block.settings.custom_icon_1 != blank -%}
+        <img class="cb-trust__img" src="{{ block.settings.custom_icon_1 | image_url: width: 64 }}" alt="" loading="lazy" width="{{ block.settings.icon_size_desktop }}" height="{{ block.settings.icon_size_desktop }}">
+      {%- else -%}
+        {%- case block.settings.icon_1 -%}
+          {%- when 'shield' -%}{{ icon_shield }}
+          {%- when 'truck' -%}{{ icon_truck }}
+          {%- when 'return' -%}{{ icon_return }}
+          {%- when 'chat' -%}{{ icon_chat }}
+          {%- when 'star' -%}{{ icon_star }}
+          {%- when 'lock' -%}{{ icon_lock }}
+          {%- when 'heart' -%}{{ icon_heart }}
+          {%- when 'clock' -%}{{ icon_clock }}
+          {%- when 'fire' -%}{{ icon_fire }}
+          {%- when 'check' -%}{{ icon_check }}
+        {%- endcase -%}
+      {%- endif -%}
       {{ block.settings.badge_1 }}
     </li>
   {%- endif -%}
+
   {%- if block.settings.badge_2 != blank -%}
     <li class="cb-trust__item">
-      {%- case block.settings.icon_2 -%}
-        {%- when 'shield' -%}{{ icon_shield }}
-        {%- when 'truck' -%}{{ icon_truck }}
-        {%- when 'return' -%}{{ icon_return }}
-        {%- when 'chat' -%}{{ icon_chat }}
-        {%- when 'star' -%}{{ icon_star }}
-        {%- when 'lock' -%}{{ icon_lock }}
-        {%- when 'heart' -%}{{ icon_heart }}
-        {%- when 'clock' -%}{{ icon_clock }}
-        {%- when 'fire' -%}{{ icon_fire }}
-        {%- when 'check' -%}{{ icon_check }}
-      {%- endcase -%}
+      {%- if block.settings.custom_icon_2 != blank -%}
+        <img class="cb-trust__img" src="{{ block.settings.custom_icon_2 | image_url: width: 64 }}" alt="" loading="lazy" width="{{ block.settings.icon_size_desktop }}" height="{{ block.settings.icon_size_desktop }}">
+      {%- else -%}
+        {%- case block.settings.icon_2 -%}
+          {%- when 'shield' -%}{{ icon_shield }}
+          {%- when 'truck' -%}{{ icon_truck }}
+          {%- when 'return' -%}{{ icon_return }}
+          {%- when 'chat' -%}{{ icon_chat }}
+          {%- when 'star' -%}{{ icon_star }}
+          {%- when 'lock' -%}{{ icon_lock }}
+          {%- when 'heart' -%}{{ icon_heart }}
+          {%- when 'clock' -%}{{ icon_clock }}
+          {%- when 'fire' -%}{{ icon_fire }}
+          {%- when 'check' -%}{{ icon_check }}
+        {%- endcase -%}
+      {%- endif -%}
       {{ block.settings.badge_2 }}
     </li>
   {%- endif -%}
+
   {%- if block.settings.badge_3 != blank -%}
     <li class="cb-trust__item">
-      {%- case block.settings.icon_3 -%}
-        {%- when 'shield' -%}{{ icon_shield }}
-        {%- when 'truck' -%}{{ icon_truck }}
-        {%- when 'return' -%}{{ icon_return }}
-        {%- when 'chat' -%}{{ icon_chat }}
-        {%- when 'star' -%}{{ icon_star }}
-        {%- when 'lock' -%}{{ icon_lock }}
-        {%- when 'heart' -%}{{ icon_heart }}
-        {%- when 'clock' -%}{{ icon_clock }}
-        {%- when 'fire' -%}{{ icon_fire }}
-        {%- when 'check' -%}{{ icon_check }}
-      {%- endcase -%}
+      {%- if block.settings.custom_icon_3 != blank -%}
+        <img class="cb-trust__img" src="{{ block.settings.custom_icon_3 | image_url: width: 64 }}" alt="" loading="lazy" width="{{ block.settings.icon_size_desktop }}" height="{{ block.settings.icon_size_desktop }}">
+      {%- else -%}
+        {%- case block.settings.icon_3 -%}
+          {%- when 'shield' -%}{{ icon_shield }}
+          {%- when 'truck' -%}{{ icon_truck }}
+          {%- when 'return' -%}{{ icon_return }}
+          {%- when 'chat' -%}{{ icon_chat }}
+          {%- when 'star' -%}{{ icon_star }}
+          {%- when 'lock' -%}{{ icon_lock }}
+          {%- when 'heart' -%}{{ icon_heart }}
+          {%- when 'clock' -%}{{ icon_clock }}
+          {%- when 'fire' -%}{{ icon_fire }}
+          {%- when 'check' -%}{{ icon_check }}
+        {%- endcase -%}
+      {%- endif -%}
       {{ block.settings.badge_3 }}
     </li>
   {%- endif -%}
+
   {%- if block.settings.badge_4 != blank -%}
     <li class="cb-trust__item">
-      {%- case block.settings.icon_4 -%}
-        {%- when 'shield' -%}{{ icon_shield }}
-        {%- when 'truck' -%}{{ icon_truck }}
-        {%- when 'return' -%}{{ icon_return }}
-        {%- when 'chat' -%}{{ icon_chat }}
-        {%- when 'star' -%}{{ icon_star }}
-        {%- when 'lock' -%}{{ icon_lock }}
-        {%- when 'heart' -%}{{ icon_heart }}
-        {%- when 'clock' -%}{{ icon_clock }}
-        {%- when 'fire' -%}{{ icon_fire }}
-        {%- when 'check' -%}{{ icon_check }}
-      {%- endcase -%}
+      {%- if block.settings.custom_icon_4 != blank -%}
+        <img class="cb-trust__img" src="{{ block.settings.custom_icon_4 | image_url: width: 64 }}" alt="" loading="lazy" width="{{ block.settings.icon_size_desktop }}" height="{{ block.settings.icon_size_desktop }}">
+      {%- else -%}
+        {%- case block.settings.icon_4 -%}
+          {%- when 'shield' -%}{{ icon_shield }}
+          {%- when 'truck' -%}{{ icon_truck }}
+          {%- when 'return' -%}{{ icon_return }}
+          {%- when 'chat' -%}{{ icon_chat }}
+          {%- when 'star' -%}{{ icon_star }}
+          {%- when 'lock' -%}{{ icon_lock }}
+          {%- when 'heart' -%}{{ icon_heart }}
+          {%- when 'clock' -%}{{ icon_clock }}
+          {%- when 'fire' -%}{{ icon_fire }}
+          {%- when 'check' -%}{{ icon_check }}
+        {%- endcase -%}
+      {%- endif -%}
       {{ block.settings.badge_4 }}
     </li>
   {%- endif -%}
+
 </ul>
 
 {% schema %}
@@ -88,61 +133,74 @@
   "target": "section",
   "settings": [
     { "type": "header", "content": "Badge 1" },
-    { "type": "select", "id": "icon_1", "label": "Icon", "default": "shield", "options": [
-        { "value": "shield", "label": "Shield (secure)" },
-        { "value": "lock", "label": "Lock (security)" },
-        { "value": "check", "label": "Checkmark (verified)" },
-        { "value": "truck", "label": "Truck (delivery)" },
-        { "value": "return", "label": "Return arrow (returns)" },
-        { "value": "chat", "label": "Chat bubble (support)" },
-        { "value": "star", "label": "Star (quality)" },
-        { "value": "heart", "label": "Heart (satisfaction)" },
-        { "value": "clock", "label": "Clock (fast)" },
-        { "value": "fire", "label": "Fire (popular)" }
+    { "type": "image_picker", "id": "custom_icon_1", "label": "Custom icon (overrides selection below)" },
+    { "type": "select", "id": "icon_1", "label": "Built-in icon", "default": "shield", "options": [
+        { "value": "shield", "label": "Shield" },
+        { "value": "lock",   "label": "Lock" },
+        { "value": "check",  "label": "Checkmark" },
+        { "value": "truck",  "label": "Truck" },
+        { "value": "return", "label": "Return arrow" },
+        { "value": "chat",   "label": "Chat bubble" },
+        { "value": "star",   "label": "Star" },
+        { "value": "heart",  "label": "Heart" },
+        { "value": "clock",  "label": "Clock" },
+        { "value": "fire",   "label": "Fire" }
     ]},
     { "type": "text", "id": "badge_1", "label": "Text", "default": "Secure checkout" },
+
     { "type": "header", "content": "Badge 2" },
-    { "type": "select", "id": "icon_2", "label": "Icon", "default": "truck", "options": [
-        { "value": "shield", "label": "Shield (secure)" },
-        { "value": "lock", "label": "Lock (security)" },
-        { "value": "check", "label": "Checkmark (verified)" },
-        { "value": "truck", "label": "Truck (delivery)" },
-        { "value": "return", "label": "Return arrow (returns)" },
-        { "value": "chat", "label": "Chat bubble (support)" },
-        { "value": "star", "label": "Star (quality)" },
-        { "value": "heart", "label": "Heart (satisfaction)" },
-        { "value": "clock", "label": "Clock (fast)" },
-        { "value": "fire", "label": "Fire (popular)" }
+    { "type": "image_picker", "id": "custom_icon_2", "label": "Custom icon (overrides selection below)" },
+    { "type": "select", "id": "icon_2", "label": "Built-in icon", "default": "truck", "options": [
+        { "value": "shield", "label": "Shield" },
+        { "value": "lock",   "label": "Lock" },
+        { "value": "check",  "label": "Checkmark" },
+        { "value": "truck",  "label": "Truck" },
+        { "value": "return", "label": "Return arrow" },
+        { "value": "chat",   "label": "Chat bubble" },
+        { "value": "star",   "label": "Star" },
+        { "value": "heart",  "label": "Heart" },
+        { "value": "clock",  "label": "Clock" },
+        { "value": "fire",   "label": "Fire" }
     ]},
     { "type": "text", "id": "badge_2", "label": "Text", "default": "Fast delivery" },
+
     { "type": "header", "content": "Badge 3" },
-    { "type": "select", "id": "icon_3", "label": "Icon", "default": "return", "options": [
-        { "value": "shield", "label": "Shield (secure)" },
-        { "value": "lock", "label": "Lock (security)" },
-        { "value": "check", "label": "Checkmark (verified)" },
-        { "value": "truck", "label": "Truck (delivery)" },
-        { "value": "return", "label": "Return arrow (returns)" },
-        { "value": "chat", "label": "Chat bubble (support)" },
-        { "value": "star", "label": "Star (quality)" },
-        { "value": "heart", "label": "Heart (satisfaction)" },
-        { "value": "clock", "label": "Clock (fast)" },
-        { "value": "fire", "label": "Fire (popular)" }
+    { "type": "image_picker", "id": "custom_icon_3", "label": "Custom icon (overrides selection below)" },
+    { "type": "select", "id": "icon_3", "label": "Built-in icon", "default": "return", "options": [
+        { "value": "shield", "label": "Shield" },
+        { "value": "lock",   "label": "Lock" },
+        { "value": "check",  "label": "Checkmark" },
+        { "value": "truck",  "label": "Truck" },
+        { "value": "return", "label": "Return arrow" },
+        { "value": "chat",   "label": "Chat bubble" },
+        { "value": "star",   "label": "Star" },
+        { "value": "heart",  "label": "Heart" },
+        { "value": "clock",  "label": "Clock" },
+        { "value": "fire",   "label": "Fire" }
     ]},
     { "type": "text", "id": "badge_3", "label": "Text", "default": "Easy 30-day returns" },
+
     { "type": "header", "content": "Badge 4" },
-    { "type": "select", "id": "icon_4", "label": "Icon", "default": "chat", "options": [
-        { "value": "shield", "label": "Shield (secure)" },
-        { "value": "lock", "label": "Lock (security)" },
-        { "value": "check", "label": "Checkmark (verified)" },
-        { "value": "truck", "label": "Truck (delivery)" },
-        { "value": "return", "label": "Return arrow (returns)" },
-        { "value": "chat", "label": "Chat bubble (support)" },
-        { "value": "star", "label": "Star (quality)" },
-        { "value": "heart", "label": "Heart (satisfaction)" },
-        { "value": "clock", "label": "Clock (fast)" },
-        { "value": "fire", "label": "Fire (popular)" }
+    { "type": "image_picker", "id": "custom_icon_4", "label": "Custom icon (overrides selection below)" },
+    { "type": "select", "id": "icon_4", "label": "Built-in icon", "default": "chat", "options": [
+        { "value": "shield", "label": "Shield" },
+        { "value": "lock",   "label": "Lock" },
+        { "value": "check",  "label": "Checkmark" },
+        { "value": "truck",  "label": "Truck" },
+        { "value": "return", "label": "Return arrow" },
+        { "value": "chat",   "label": "Chat bubble" },
+        { "value": "star",   "label": "Star" },
+        { "value": "heart",  "label": "Heart" },
+        { "value": "clock",  "label": "Clock" },
+        { "value": "fire",   "label": "Fire" }
     ]},
     { "type": "text", "id": "badge_4", "label": "Text", "default": "24/7 support" },
+
+    { "type": "header", "content": "Icon size" },
+    { "type": "range", "id": "icon_size_desktop", "label": "Desktop (px)", "min": 14, "max": 48, "step": 2, "default": 20 },
+    { "type": "range", "id": "icon_size_tablet",  "label": "Tablet (px)",  "min": 14, "max": 48, "step": 2, "default": 18 },
+    { "type": "range", "id": "icon_size_mobile",  "label": "Mobile (px)",  "min": 12, "max": 40, "step": 2, "default": 16 },
+
     { "type": "header", "content": "Style" },
     { "type": "color", "id": "color", "label": "Color", "default": "#333333" },
     { "type": "range", "id": "font_size", "label": "Font size", "min": 11, "max": 16, "step": 1, "default": 13 }

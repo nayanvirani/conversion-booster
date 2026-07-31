@@ -100,6 +100,7 @@
   font-size: 13px;
 }
 .cb-trust__item svg { width: 18px; height: 18px; flex: none; }
+.cb-trust__img { width: 18px; height: 18px; flex: none; object-fit: contain; }
 
 /* ---------- Sticky add to cart ---------- */
 .cb-satc {
