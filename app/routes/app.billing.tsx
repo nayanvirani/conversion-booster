@@ -25,6 +25,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { billing } = await authenticate.admin(request);
+  const formData = await request.formData();
+  const intent = formData.get("intent");
+
+  if (intent === "cancel") {
+    const { appSubscriptions } = await billing.check({ isTest: false });
+    const active = appSubscriptions[0];
+    if (active) {
+      await billing.cancel({
+        subscriptionId: active.id,
+        isTest: false,
+        prorate: true,
+      });
+    }
+    return json({ cancelled: true });
+  }
+
   await billing.request({
     plan: PLANS.PRO as never,
     isTest: false,
@@ -39,7 +55,7 @@ export default function BillingPage() {
 
   return (
     <Page
-      title="Upgrade to Pro"
+      title="Plans"
       backAction={{ content: "Home", url: "/app" }}
     >
       <Layout>
@@ -62,6 +78,17 @@ export default function BillingPage() {
                 <List.Item>Countdown Timer</List.Item>
                 <List.Item>"Powered by Boostify" branding</List.Item>
               </List>
+              {isPro && (
+                <Button
+                  variant="plain"
+                  tone="critical"
+                  onClick={() =>
+                    submit({ intent: "cancel" }, { method: "post" })
+                  }
+                >
+                  Downgrade to Free
+                </Button>
+              )}
             </BlockStack>
           </Card>
         </Layout.Section>
