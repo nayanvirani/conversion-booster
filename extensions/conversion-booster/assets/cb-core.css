@@ -98,9 +98,12 @@
   align-items: center;
   gap: 7px;
   font-size: 13px;
+  white-space: nowrap;
 }
 .cb-trust__item svg { width: 18px; height: 18px; flex: none; }
 .cb-trust__img { width: 18px; height: 18px; flex: none; object-fit: contain; }
+/* scroll ticker wrapper */
+.cb-trust-track { display: block; }
 
 /* ---------- Sticky add to cart ---------- */
 .cb-satc {
