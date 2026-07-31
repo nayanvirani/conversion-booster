@@ -6,6 +6,14 @@
       if (sessionStorage.getItem(key)) { bar.remove(); return; }
     } catch (e) { /* storage blocked — ignore */ }
 
+    // Move bar to correct position — app embeds inject at end of body
+    var pos = bar.getAttribute('data-position') || 'top';
+    if (pos === 'bottom') {
+      document.body.appendChild(bar);
+    } else {
+      document.body.insertBefore(bar, document.body.firstChild);
+    }
+
     var close = bar.querySelector('.cb-bar__close');
     if (close) {
       close.addEventListener('click', function () {

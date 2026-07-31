@@ -14,6 +14,7 @@
   text-align: center;
 }
 .cb-bar--sticky { position: sticky; top: 0; }
+[data-position="bottom"].cb-bar--sticky { position: fixed; bottom: 0; top: auto; left: 0; right: 0; }
 .cb-bar__msg { margin: 0; }
 .cb-bar__msg a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .cb-bar__cta {

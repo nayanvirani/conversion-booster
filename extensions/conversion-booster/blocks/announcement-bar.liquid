@@ -20,6 +20,7 @@
   style="background:{{ block.settings.bg_color }};color:{{ block.settings.text_color }};font-size:{{ block.settings.font_size }}px;"
   data-messages="{{ messages | escape }}"
   data-interval="{{ block.settings.rotate_seconds | times: 1000 }}"
+  data-position="{{ block.settings.position }}"
   {% if block.settings.msg_2 != blank %}data-rotating{% endif %}
   role="region"
   aria-label="Announcement"
@@ -54,7 +55,11 @@
     { "type": "color", "id": "bg_color", "label": "Background", "default": "#1a1a2e" },
     { "type": "color", "id": "text_color", "label": "Text", "default": "#ffffff" },
     { "type": "range", "id": "font_size", "label": "Font size", "min": 12, "max": 18, "step": 1, "default": 14 },
-    { "type": "checkbox", "id": "sticky", "label": "Stick to top while scrolling", "default": false },
+    { "type": "select", "id": "position", "label": "Position", "default": "top", "options": [
+        { "value": "top", "label": "Top of page" },
+        { "value": "bottom", "label": "Bottom of page" }
+    ]},
+    { "type": "checkbox", "id": "sticky", "label": "Stick while scrolling", "default": false },
     { "type": "checkbox", "id": "dismissible", "label": "Show close button", "default": true }
   ]
 }
