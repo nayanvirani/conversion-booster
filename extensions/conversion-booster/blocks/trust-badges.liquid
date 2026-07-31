@@ -1,15 +1,10 @@
 {{ 'cb-core.css' | asset_url | stylesheet_tag }}
 
-{%- capture icon_shield -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>{%- endcapture -%}
-{%- capture icon_truck -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 18V6H1v12h2"/><path d="M14 9h4l4 4v5h-2"/><circle cx="7" cy="18" r="2"/><circle cx="18" cy="18" r="2"/></svg>{%- endcapture -%}
-{%- capture icon_return -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>{%- endcapture -%}
-{%- capture icon_chat -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-8 8H4l1.5-3A8 8 0 1 1 21 12z"/></svg>{%- endcapture -%}
-{%- capture icon_star -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>{%- endcapture -%}
-{%- capture icon_lock -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>{%- endcapture -%}
-{%- capture icon_heart -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>{%- endcapture -%}
-{%- capture icon_clock -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 7v5l3.5 3.5"/></svg>{%- endcapture -%}
-{%- capture icon_fire -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"/></svg>{%- endcapture -%}
-{%- capture icon_check -%}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>{%- endcapture -%}
+{%- capture default_icon -%}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>
+</svg>
+{%- endcapture -%}
 
 {%- assign bid        = block.id -%}
 {%- assign layout     = block.settings.layout -%}
@@ -18,35 +13,18 @@
 {%- assign needs_scroll = false -%}
 {%- if layout == 'scroll' or mob == 'scroll' -%}{%- assign needs_scroll = true -%}{%- endif -%}
 
-{%- comment -%} Build the badge list once, output twice when scrolling {%- endcomment -%}
 {%- capture badge_items -%}
-  {%- assign icon_keys = 'icon_1,icon_2,icon_3,icon_4,icon_5,icon_6,icon_7,icon_8,icon_9,icon_10' | split: ',' -%}
-  {%- assign text_keys = 'badge_1,badge_2,badge_3,badge_4,badge_5,badge_6,badge_7,badge_8,badge_9,badge_10' | split: ',' -%}
-  {%- assign cust_keys = 'custom_icon_1,custom_icon_2,custom_icon_3,custom_icon_4,custom_icon_5,custom_icon_6,custom_icon_7,custom_icon_8,custom_icon_9,custom_icon_10' | split: ',' -%}
-  {%- for i in (0..9) -%}
-    {%- assign txt  = text_keys[i] -%}
-    {%- assign ico  = icon_keys[i] -%}
-    {%- assign cust = cust_keys[i] -%}
-    {%- assign badge_text   = block.settings[txt] -%}
-    {%- assign badge_icon   = block.settings[ico] -%}
-    {%- assign custom_image = block.settings[cust] -%}
+  {%- assign img_keys  = 'custom_icon_1,custom_icon_2,custom_icon_3,custom_icon_4,custom_icon_5,custom_icon_6' | split: ',' -%}
+  {%- assign text_keys = 'badge_1,badge_2,badge_3,badge_4,badge_5,badge_6' | split: ',' -%}
+  {%- for i in (0..5) -%}
+    {%- assign badge_text   = block.settings[text_keys[i]] -%}
+    {%- assign custom_image = block.settings[img_keys[i]] -%}
     {%- if badge_text != blank -%}
       <li class="cb-trust__item">
         {%- if custom_image != blank -%}
-          <img class="cb-trust__img" src="{{ custom_image | image_url: width: 64 }}" alt="" loading="lazy" width="{{ block.settings.icon_size_desktop }}" height="{{ block.settings.icon_size_desktop }}">
+          <img class="cb-trust__img" src="{{ custom_image | image_url: width: 64 }}" alt="" loading="lazy" width="{{ block.settings.icon_size }}" height="{{ block.settings.icon_size }}">
         {%- else -%}
-          {%- case badge_icon -%}
-            {%- when 'shield' -%}{{ icon_shield }}
-            {%- when 'truck'  -%}{{ icon_truck }}
-            {%- when 'return' -%}{{ icon_return }}
-            {%- when 'chat'   -%}{{ icon_chat }}
-            {%- when 'star'   -%}{{ icon_star }}
-            {%- when 'lock'   -%}{{ icon_lock }}
-            {%- when 'heart'  -%}{{ icon_heart }}
-            {%- when 'clock'  -%}{{ icon_clock }}
-            {%- when 'fire'   -%}{{ icon_fire }}
-            {%- when 'check'  -%}{{ icon_check }}
-          {%- endcase -%}
+          {{ default_icon }}
         {%- endif -%}
         <span>{{ badge_text }}</span>
       </li>
@@ -54,76 +32,34 @@
   {%- endfor -%}
 {%- endcapture -%}
 
-{%- assign ul_style = 'color:' | append: block.settings.color | append: ';font-size:' | append: block.settings.font_size | append: 'px;' -%}
+{%- assign ul_style = 'color:' | append: block.settings.color | append: ';' -%}
 
 <style>
-  /* — Icon sizing — */
   #cb-trust-{{ bid }} .cb-trust__item svg,
-  #cb-trust-{{ bid }} .cb-trust__img {
-    width: {{ block.settings.icon_size_desktop }}px;
-    height: {{ block.settings.icon_size_desktop }}px;
-  }
-  @media (max-width: 768px) {
-    #cb-trust-{{ bid }} .cb-trust__item svg,
-    #cb-trust-{{ bid }} .cb-trust__img {
-      width: {{ block.settings.icon_size_tablet }}px;
-      height: {{ block.settings.icon_size_tablet }}px;
-    }
-  }
-  @media (max-width: 480px) {
-    #cb-trust-{{ bid }} .cb-trust__item svg,
-    #cb-trust-{{ bid }} .cb-trust__img {
-      width: {{ block.settings.icon_size_mobile }}px;
-      height: {{ block.settings.icon_size_mobile }}px;
-    }
-  }
+  #cb-trust-{{ bid }} .cb-trust__img { width: {{ block.settings.icon_size }}px; height: {{ block.settings.icon_size }}px; }
 
-  /* — Desktop layout — */
   {%- if layout == 'vertical' -%}
   #cb-trust-{{ bid }} .cb-trust { flex-direction: column; align-items: flex-start; }
   {%- elsif layout == 'scroll' -%}
   #cb-trust-{{ bid }} { overflow: hidden; }
-  #cb-trust-{{ bid }} .cb-trust-track {
-    display: flex;
-    width: max-content;
-    animation: cb-marquee-{{ bid }} {{ scroll_dur }} linear infinite;
-  }
+  #cb-trust-{{ bid }} .cb-trust-track { display: flex; width: max-content; animation: cbmq{{ bid }} {{ scroll_dur }} linear infinite; }
   #cb-trust-{{ bid }} .cb-trust { flex-wrap: nowrap; }
   #cb-trust-{{ bid }} .cb-trust-track:hover { animation-play-state: paused; }
-  @keyframes cb-marquee-{{ bid }} {
-    from { transform: translateX(0); }
-    to   { transform: translateX(-50%); }
-  }
+  @keyframes cbmq{{ bid }} { from { transform: translateX(0); } to { transform: translateX(-50%); } }
   {%- endif -%}
 
-  /* — Mobile layout — */
   @media (max-width: 480px) {
     {%- if mob == 'vertical' -%}
-    #cb-trust-{{ bid }} .cb-trust {
-      flex-direction: column !important;
-      align-items: flex-start;
-      animation: none !important;
-    }
+    #cb-trust-{{ bid }} .cb-trust { flex-direction: column !important; align-items: flex-start; animation: none !important; }
     #cb-trust-{{ bid }} .cb-trust--dupe { display: none; }
     {%- elsif mob == 'horizontal' -%}
-    #cb-trust-{{ bid }} .cb-trust {
-      flex-direction: row !important;
-      flex-wrap: wrap !important;
-      animation: none !important;
-    }
+    #cb-trust-{{ bid }} .cb-trust { flex-direction: row !important; flex-wrap: wrap !important; animation: none !important; }
     #cb-trust-{{ bid }} .cb-trust--dupe { display: none; }
     {%- elsif mob == 'scroll' and layout != 'scroll' -%}
     #cb-trust-{{ bid }} { overflow: hidden; }
-    #cb-trust-{{ bid }} .cb-trust-track {
-      display: flex;
-      width: max-content;
-      animation: cb-marquee-{{ bid }} {{ scroll_dur }} linear infinite;
-    }
+    #cb-trust-{{ bid }} .cb-trust-track { display: flex; width: max-content; animation: cbmq{{ bid }} {{ scroll_dur }} linear infinite; }
     #cb-trust-{{ bid }} .cb-trust { flex-direction: row !important; flex-wrap: nowrap !important; }
-    @keyframes cb-marquee-{{ bid }} {
-      from { transform: translateX(0); }
-      to   { transform: translateX(-50%); }
-    }
+    @keyframes cbmq{{ bid }} { from { transform: translateX(0); } to { transform: translateX(-50%); } }
     {%- endif -%}
   }
 </style>
@@ -145,137 +81,36 @@
   "target": "section",
   "settings": [
     { "type": "header", "content": "Layout" },
-    { "type": "select", "id": "layout", "label": "Desktop layout", "default": "horizontal", "options": [
+    { "type": "select", "id": "layout", "label": "Desktop", "default": "horizontal", "options": [
         { "value": "horizontal", "label": "Horizontal (wrap)" },
         { "value": "vertical",   "label": "Vertical list" },
-        { "value": "scroll",     "label": "Infinite scroll (ticker)" }
+        { "value": "scroll",     "label": "Infinite scroll ticker" }
     ]},
-    { "type": "select", "id": "mobile_layout", "label": "Mobile layout", "default": "same", "options": [
+    { "type": "select", "id": "mobile_layout", "label": "Mobile", "default": "same", "options": [
         { "value": "same",       "label": "Same as desktop" },
         { "value": "horizontal", "label": "Horizontal (wrap)" },
         { "value": "vertical",   "label": "Vertical list" },
-        { "value": "scroll",     "label": "Infinite scroll" }
+        { "value": "scroll",     "label": "Infinite scroll ticker" }
     ]},
-    { "type": "range", "id": "scroll_speed", "label": "Scroll speed (seconds per loop)", "min": 5, "max": 60, "step": 5, "default": 20, "info": "Lower = faster. Applies when scroll layout is active." },
+    { "type": "range", "id": "scroll_speed", "label": "Scroll speed (seconds)", "min": 5, "max": 60, "step": 5, "default": 20, "info": "Lower = faster. Only applies in scroll mode." },
 
-    { "type": "header", "content": "Badge 1" },
-    { "type": "image_picker", "id": "custom_icon_1", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_1", "label": "Built-in icon", "default": "shield", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_1", "label": "Text", "default": "Secure checkout" },
-
-    { "type": "header", "content": "Badge 2" },
-    { "type": "image_picker", "id": "custom_icon_2", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_2", "label": "Built-in icon", "default": "truck", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_2", "label": "Text", "default": "Fast delivery" },
-
-    { "type": "header", "content": "Badge 3" },
-    { "type": "image_picker", "id": "custom_icon_3", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_3", "label": "Built-in icon", "default": "return", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_3", "label": "Text", "default": "Easy 30-day returns" },
-
-    { "type": "header", "content": "Badge 4" },
-    { "type": "image_picker", "id": "custom_icon_4", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_4", "label": "Built-in icon", "default": "chat", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_4", "label": "Text", "default": "24/7 support" },
-
-    { "type": "header", "content": "Badge 5 (optional)" },
-    { "type": "image_picker", "id": "custom_icon_5", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_5", "label": "Built-in icon", "default": "star", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_5", "label": "Text" },
-
-    { "type": "header", "content": "Badge 6 (optional)" },
-    { "type": "image_picker", "id": "custom_icon_6", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_6", "label": "Built-in icon", "default": "lock", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_6", "label": "Text" },
-
-    { "type": "header", "content": "Badge 7 (optional)" },
-    { "type": "image_picker", "id": "custom_icon_7", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_7", "label": "Built-in icon", "default": "heart", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_7", "label": "Text" },
-
-    { "type": "header", "content": "Badge 8 (optional)" },
-    { "type": "image_picker", "id": "custom_icon_8", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_8", "label": "Built-in icon", "default": "clock", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_8", "label": "Text" },
-
-    { "type": "header", "content": "Badge 9 (optional)" },
-    { "type": "image_picker", "id": "custom_icon_9", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_9", "label": "Built-in icon", "default": "check", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_9", "label": "Text" },
-
-    { "type": "header", "content": "Badge 10 (optional)" },
-    { "type": "image_picker", "id": "custom_icon_10", "label": "Custom icon (overrides built-in)" },
-    { "type": "select", "id": "icon_10", "label": "Built-in icon", "default": "fire", "options": [
-        { "value": "shield", "label": "Shield" }, { "value": "lock", "label": "Lock" },
-        { "value": "check", "label": "Checkmark" }, { "value": "truck", "label": "Truck" },
-        { "value": "return", "label": "Return arrow" }, { "value": "chat", "label": "Chat bubble" },
-        { "value": "star", "label": "Star" }, { "value": "heart", "label": "Heart" },
-        { "value": "clock", "label": "Clock" }, { "value": "fire", "label": "Fire" }
-    ]},
-    { "type": "text", "id": "badge_10", "label": "Text" },
-
-    { "type": "header", "content": "Icon size" },
-    { "type": "range", "id": "icon_size_desktop", "label": "Desktop (px)", "min": 14, "max": 48, "step": 2, "default": 20 },
-    { "type": "range", "id": "icon_size_tablet",  "label": "Tablet (px)",  "min": 14, "max": 48, "step": 2, "default": 18 },
-    { "type": "range", "id": "icon_size_mobile",  "label": "Mobile (px)",  "min": 12, "max": 40, "step": 2, "default": 16 },
+    { "type": "header", "content": "Badges — upload icon + enter text (up to 6)" },
+    { "type": "image_picker", "id": "custom_icon_1", "label": "Badge 1 icon" },
+    { "type": "text",         "id": "badge_1",       "label": "Badge 1 text", "default": "Secure checkout" },
+    { "type": "image_picker", "id": "custom_icon_2", "label": "Badge 2 icon" },
+    { "type": "text",         "id": "badge_2",       "label": "Badge 2 text", "default": "Fast delivery" },
+    { "type": "image_picker", "id": "custom_icon_3", "label": "Badge 3 icon" },
+    { "type": "text",         "id": "badge_3",       "label": "Badge 3 text", "default": "Easy returns" },
+    { "type": "image_picker", "id": "custom_icon_4", "label": "Badge 4 icon" },
+    { "type": "text",         "id": "badge_4",       "label": "Badge 4 text", "default": "24/7 support" },
+    { "type": "image_picker", "id": "custom_icon_5", "label": "Badge 5 icon (optional)" },
+    { "type": "text",         "id": "badge_5",       "label": "Badge 5 text" },
+    { "type": "image_picker", "id": "custom_icon_6", "label": "Badge 6 icon (optional)" },
+    { "type": "text",         "id": "badge_6",       "label": "Badge 6 text" },
 
     { "type": "header", "content": "Style" },
-    { "type": "color", "id": "color", "label": "Color", "default": "#333333" },
-    { "type": "range", "id": "font_size", "label": "Font size", "min": 11, "max": 16, "step": 1, "default": 13 }
+    { "type": "range", "id": "icon_size", "label": "Icon size (px)", "min": 14, "max": 48, "step": 2, "default": 20 },
+    { "type": "color", "id": "color",     "label": "Color",          "default": "#333333" }
   ]
 }
 {% endschema %}
