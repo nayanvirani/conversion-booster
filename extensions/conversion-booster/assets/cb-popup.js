@@ -1,4 +1,4 @@
-/* Conversion Booster — social proof popup (real products, no backend) */
+/* Boostify — social proof popup (real products, no backend) */
 (function () {
   var cfg = document.getElementById('cb-pop-config');
   if (!cfg) return;

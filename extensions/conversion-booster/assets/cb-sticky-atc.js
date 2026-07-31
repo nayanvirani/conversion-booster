@@ -1,4 +1,4 @@
-/* Conversion Booster — sticky add to cart */
+/* Boostify — sticky add to cart */
 (function () {
   var bar = document.querySelector('.cb-satc');
   if (!bar) return;

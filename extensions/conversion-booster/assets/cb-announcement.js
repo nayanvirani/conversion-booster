@@ -1,4 +1,4 @@
-/* Conversion Booster — announcement bar */
+/* Boostify — announcement bar */
 (function () {
   document.querySelectorAll('.cb-bar').forEach(function (bar) {
     var key = 'cb-bar-dismissed-' + bar.id;
