@@ -18,7 +18,8 @@ export const meta: MetaFunction = () => [
   },
 ];
 
-const APP_STORE_URL = "https://apps.shopify.com/conversion-booster";
+// App is pending Shopify review — re-enable once approved
+// const APP_STORE_URL = "https://apps.shopify.com/conversion-booster";
 
 function Logo() {
   return (
@@ -78,7 +79,7 @@ const WIDGETS = [
 const STEPS = [
   {
     title: "Install the app",
-    desc: "One click from the Shopify App Store. Works on any theme — no developer account needed.",
+    desc: "One click from the Shopify App Store once available. Works on any theme — no developer account needed.",
   },
   {
     title: "Enable widgets in Theme Editor",
@@ -107,9 +108,7 @@ export default function Index() {
             <a href="#setup">Setup</a>
             <a href="#pricing">Pricing</a>
           </nav>
-          <a href={APP_STORE_URL} className="btn btn--accent btn--sm" rel="noopener noreferrer">
-            Install free
-          </a>
+          <span className="nav__coming-soon">Pending review</span>
         </header>
 
         {/* Hero */}
@@ -127,9 +126,9 @@ export default function Index() {
               subscription stack to juggle.
             </p>
             <div className="hero__ctas">
-              <a href={APP_STORE_URL} className="btn btn--accent btn--lg" rel="noopener noreferrer">
-                Install on Shopify — Free
-              </a>
+              <span className="btn btn--accent btn--lg btn--disabled" aria-disabled="true">
+                Launching on Shopify App Store soon
+              </span>
               <a href="#pricing" className="btn btn--ghost btn--lg">
                 View pricing
               </a>
@@ -258,9 +257,9 @@ export default function Index() {
                     <li key={f} className="pi pi--n"><span aria-hidden="true">—</span>{f}</li>
                   ))}
                 </ul>
-                <a href={APP_STORE_URL} className="btn btn--outline pcard__cta" rel="noopener noreferrer">
-                  Install free
-                </a>
+                <span className="btn btn--outline pcard__cta btn--disabled" aria-disabled="true">
+                  Coming soon
+                </span>
               </div>
 
               <div className="pcard pcard--pro">
@@ -280,9 +279,9 @@ export default function Index() {
                     <li key={f} className="pi pi--y"><span aria-hidden="true">✓</span>{f}</li>
                   ))}
                 </ul>
-                <a href={APP_STORE_URL} className="btn btn--accent pcard__cta" rel="noopener noreferrer">
-                  Start free trial
-                </a>
+                <span className="btn btn--accent pcard__cta btn--disabled" aria-disabled="true">
+                  Coming soon
+                </span>
               </div>
             </div>
           </div>
@@ -377,6 +376,7 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .btn:active{transform:scale(.98)}
 .btn:focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 .btn--sm{padding:.45rem 1rem;font-size:.83rem}
+.btn--disabled{opacity:.55;cursor:not-allowed;pointer-events:none}
 .btn--lg{padding:.85rem 1.8rem;font-size:1rem}
 .btn--accent{background:var(--accent);color:#fff}
 .btn--ghost{background:transparent;color:var(--text);border-color:var(--border)}
@@ -404,6 +404,13 @@ button{font-family:inherit;cursor:pointer;border:none;background:none}
 .nav__links a{font-size:.875rem;font-weight:500;color:var(--muted);transition:color .15s}
 .nav__links a:hover{color:var(--text)}
 .nav > .btn{margin-left:1rem;flex-shrink:0}
+.nav__coming-soon{
+  margin-left:1rem;flex-shrink:0;
+  font-size:.8rem;font-weight:600;letter-spacing:.03em;
+  padding:.45rem 1rem;border-radius:8px;
+  background:var(--surface2);color:var(--muted);
+  border:1px dashed var(--border);
+}
 
 /* ── Hero ── */
 .hero{
