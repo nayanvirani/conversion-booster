@@ -1,8 +1,9 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData, useSubmit } from "@remix-run/react";
+import { useActionData, useLoaderData, useSubmit } from "@remix-run/react";
 import {
   Badge,
+  Banner,
   BlockStack,
   Button,
   Card,
@@ -33,28 +34,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const intent = formData.get("intent");
 
   if (intent === "cancel") {
-    const { appSubscriptions } = await billing.check({ isTest: false });
-    const active = appSubscriptions[0];
-    if (active) {
-      await billing.cancel({
-        subscriptionId: active.id,
-        isTest: false,
-        prorate: true,
-      });
+    try {
+      const { appSubscriptions } = await billing.check({ isTest: false });
+      const active = appSubscriptions[0];
+      if (active) {
+        await billing.cancel({
+          subscriptionId: active.id,
+          isTest: false,
+          prorate: true,
+        });
+      }
+    } catch {
+      // billing not available on development stores
     }
     return json({ cancelled: true });
   }
 
-  await billing.request({
-    plan: PLANS.PRO as never,
-    isTest: false,
-    returnUrl: `${process.env.SHOPIFY_APP_URL}/app`,
-  });
+  try {
+    await billing.request({
+      plan: PLANS.PRO as never,
+      isTest: false,
+      returnUrl: `${process.env.SHOPIFY_APP_URL}/app`,
+    });
+  } catch {
+    return json({ billingError: true });
+  }
   return null;
 };
 
 export default function BillingPage() {
   const { isPro } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
   const submit = useSubmit();
 
   return (
@@ -62,6 +72,11 @@ export default function BillingPage() {
       title="Plans"
       backAction={{ content: "Home", url: "/app" }}
     >
+      {actionData && "billingError" in actionData && actionData.billingError && (
+        <Banner tone="warning" title="Billing unavailable on development stores">
+          <p>Billing works on live merchant stores. Install on a production store to subscribe.</p>
+        </Banner>
+      )}
       <Layout>
         <Layout.Section variant="oneHalf">
           <Card>
