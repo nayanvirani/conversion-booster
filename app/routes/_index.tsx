@@ -1,4 +1,13 @@
-import type { MetaFunction } from "@remix-run/node";
+import { redirect } from "@remix-run/node";
+import type { LoaderFunctionArgs, MetaFunction } from "@remix-run/node";
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const url = new URL(request.url);
+  if (url.searchParams.get("shop")) {
+    return redirect(`/app?${url.searchParams.toString()}`);
+  }
+  return null;
+};
 
 export const meta: MetaFunction = () => [
   { title: "Boostify — 5 Shopify Widgets, One Install" },
