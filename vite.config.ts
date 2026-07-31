@@ -20,6 +20,6 @@ export default defineConfig({
     assetsInlineLimit: 0,
   },
   ssr: {
-    noExternal: ["@shopify/app-bridge-react", "@shopify/polaris"],
+    noExternal: ["@shopify/app-bridge-react"],
   },
 }) satisfies UserConfig;
