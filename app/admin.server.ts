@@ -47,7 +47,7 @@ export function getShops(): Promise<ShopRow[]> {
 
 export type MigrationResult = {
   shop: string;
-  status: "migrated" | "already_expiring" | "no_token" | "failed";
+  status: "migrated" | "already_expiring" | "no_token" | "failed" | "session_cleared";
   error?: string;
 };
 
@@ -155,6 +155,28 @@ export async function migrateOfflineTokens(): Promise<MigrationResult[]> {
   }
 
   return results;
+}
+
+// Deletes offline sessions that still hold a permanent (non-expiring) token.
+// After clearing, the next time the merchant opens the app in Shopify admin
+// the Token Exchange flow runs automatically and issues a new expiring token.
+export function clearPermanentSessions(): Promise<{ cleared: number }> {
+  return new Promise((resolve, reject) => {
+    const dbPath = process.env.DATABASE_PATH || join(process.cwd(), "database.sqlite");
+    const db = new sqlite3.Database(dbPath, (err) => {
+      if (err) { reject(err); return; }
+    });
+    db.run(
+      `DELETE FROM shopify_sessions
+       WHERE isOnline = 0 AND (refreshToken IS NULL OR refreshToken = '')`,
+      [],
+      function (this: sqlite3.RunResult, err: Error | null) {
+        db.close();
+        if (err) reject(err);
+        else resolve({ cleared: this.changes });
+      }
+    );
+  });
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {

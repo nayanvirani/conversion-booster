@@ -1,6 +1,6 @@
 import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
 import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
-import { getEnrichedShops, migrateOfflineTokens, type EnrichedShop, type MigrationResult } from "../admin.server";
+import { clearPermanentSessions, getEnrichedShops, migrateOfflineTokens, type EnrichedShop, type MigrationResult } from "../admin.server";
 
 export const meta: MetaFunction = () => [{ title: "Admin — Boostify" }];
 
@@ -13,7 +13,16 @@ export async function loader({ request: _ }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request: _ }: ActionFunctionArgs) {
+export async function action({ request }: ActionFunctionArgs) {
+  const form   = await request.formData();
+  const intent = form.get("intent");
+
+  if (intent === "clear") {
+    const { cleared } = await clearPermanentSessions();
+    return json({ cleared });
+  }
+
+  // default: attempt Shopify token exchange
   const results = await migrateOfflineTokens();
   return json({ migration: results });
 }
@@ -23,7 +32,8 @@ export default function Admin() {
   const actionData = useActionData<typeof action>();
   const nav = useNavigation();
   const submit = useSubmit();
-  const isMigrating = nav.state === "submitting";
+  const isMigrating  = nav.state === "submitting";
+  const isClearing   = isMigrating && (nav.formData?.get("intent") === "clear");
 
   const total      = shops.length;
   const withTok    = shops.filter((s) => s.accessToken).length;
@@ -72,20 +82,36 @@ export default function Admin() {
           />
         </div>
 
-        {/* Migration banner */}
-        {actionData && "migration" in actionData && (
-          <MigrationResults results={(actionData as any).migration} />
+        {/* Session cleared confirmation */}
+        {actionData && "cleared" in actionData && (
+          <div style={{ ...S.warnBanner, background: "#EBF5EF", borderColor: "#BBF7D0", color: "#1A7048" }}>
+            <div>
+              <strong>✓ {(actionData as any).cleared} session(s) cleared.</strong>{" "}
+              Now ask the merchant to open the app in Shopify admin — Token Exchange will run automatically and issue a new expiring token.
+              The Shopify Monitoring warning should clear within 24 hours.
+            </div>
+          </div>
         )}
+
+        {/* Migration result banner */}
+        {actionData && "migration" in actionData && (
+          <MigrationResults results={(actionData as any).migration} onClear={() => submit({ intent: "clear" }, { method: "post" })} isClearing={isClearing} />
+        )}
+
+        {/* Migration needed banner */}
         {!actionData && needsMigration && (
           <div style={S.warnBanner}>
-            <span>⚠️ <strong>Fix overdue:</strong> {withTok} shop(s) use deprecated permanent offline tokens. Shopify requires migration to expiring tokens.</span>
-            <button
-              style={S.migrateBtn}
-              disabled={isMigrating}
-              onClick={() => submit({}, { method: "post" })}
-            >
-              {isMigrating ? "Migrating…" : "Migrate tokens now"}
-            </button>
+            <span>⚠️ <strong>Fix overdue:</strong> {withTok} shop(s) use deprecated permanent offline tokens.</span>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button style={S.migrateBtn} disabled={isMigrating}
+                onClick={() => submit({}, { method: "post" })}>
+                {isMigrating ? "Trying…" : "Try exchange"}
+              </button>
+              <button style={{ ...S.migrateBtn, background: "#B91C1C" }} disabled={isMigrating}
+                onClick={() => submit({ intent: "clear" }, { method: "post" })}>
+                {isClearing ? "Clearing…" : "Clear & force re-auth"}
+              </button>
+            </div>
           </div>
         )}
 
@@ -172,24 +198,41 @@ export default function Admin() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function MigrationResults({ results }: { results: MigrationResult[] }) {
+function MigrationResults({ results, onClear, isClearing }: {
+  results: MigrationResult[];
+  onClear: () => void;
+  isClearing: boolean;
+}) {
   const migrated = results.filter((r) => r.status === "migrated").length;
   const failed   = results.filter((r) => r.status === "failed").length;
   const already  = results.filter((r) => r.status === "already_expiring").length;
+  const success  = migrated > 0 || (failed === 0 && already > 0);
 
   return (
-    <div style={{ ...S.warnBanner, background: migrated > 0 ? "#EBF5EF" : "#FEE2E2", borderColor: migrated > 0 ? "#BBF7D0" : "#FECACA", color: migrated > 0 ? "#1A7048" : "#B91C1C", marginBottom: 20 }}>
-      <div>
-        <strong>Token migration complete.</strong>{" "}
-        {migrated > 0 && <span>✓ {migrated} migrated to expiring tokens. </span>}
+    <div style={{ ...S.warnBanner, background: success ? "#EBF5EF" : "#FEE2E2", borderColor: success ? "#BBF7D0" : "#FECACA", color: success ? "#1A7048" : "#B91C1C", marginBottom: 20, alignItems: "flex-start" }}>
+      <div style={{ flex: 1 }}>
+        <strong>Token exchange result.</strong>{" "}
+        {migrated > 0 && <span>✓ {migrated} migrated. Monitoring warning clears in ~24h. </span>}
         {already > 0 && <span>✓ {already} already using expiring tokens. </span>}
-        {failed > 0 && results.filter((r) => r.status === "failed").map((r, i) => (
-          <div key={i} style={{ marginTop: 4, fontFamily: "monospace", fontSize: 12 }}>
-            ✗ {r.shop}: {r.error}
-          </div>
-        ))}
-        {migrated > 0 && "Reload the Shopify Partner Dashboard Monitoring page in ~24h to confirm the warning clears."}
+        {failed > 0 && (
+          <>
+            <span>✗ {failed} failed — Cloudflare blocked the server-to-server call.</span>
+            {results.filter((r) => r.status === "failed").map((r, i) => (
+              <div key={i} style={{ marginTop: 4, fontFamily: "monospace", fontSize: 11, wordBreak: "break-all" }}>
+                {r.shop}: {r.error}
+              </div>
+            ))}
+            <div style={{ marginTop: 10, fontSize: 13 }}>
+              Use <strong>"Clear & force re-auth"</strong> instead — it deletes the old session so the next app visit issues a new expiring token automatically.
+            </div>
+          </>
+        )}
       </div>
+      {failed > 0 && (
+        <button style={{ ...S.migrateBtn, background: "#B91C1C", marginTop: 2 }} disabled={isClearing} onClick={onClear}>
+          {isClearing ? "Clearing…" : "Clear & force re-auth"}
+        </button>
+      )}
     </div>
   );
 }
