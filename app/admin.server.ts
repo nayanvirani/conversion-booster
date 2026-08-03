@@ -54,15 +54,14 @@ export type MigrationResult = {
 async function exchangeToExpiringToken(
   shop: string,
   permanentToken: string
-): Promise<{
-  accessToken: string;
-  expires: number;
-  refreshToken: string;
-  refreshTokenExpires: number;
-} | null> {
+): Promise<
+  | { ok: true; accessToken: string; expires: number; refreshToken: string; refreshTokenExpires: number }
+  | { ok: false; error: string }
+> {
   const apiKey    = process.env.SHOPIFY_API_KEY;
   const apiSecret = process.env.SHOPIFY_API_SECRET;
-  if (!apiKey || !apiSecret) return null;
+  if (!apiKey)    return { ok: false, error: "SHOPIFY_API_KEY env var missing" };
+  if (!apiSecret) return { ok: false, error: "SHOPIFY_API_SECRET env var missing" };
 
   const body = new URLSearchParams({
     client_id:             apiKey,
@@ -74,21 +73,39 @@ async function exchangeToExpiringToken(
     expiring:              "1",
   });
 
-  const res = await withTimeout(
-    fetch(`https://${shop}/admin/oauth/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: body.toString(),
-    }),
-    10000
-  );
-  if (!res || !res.ok) return null;
+  let res: Response | null;
+  try {
+    res = await withTimeout(
+      fetch(`https://${shop}/admin/oauth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: body.toString(),
+      }),
+      10000
+    );
+  } catch (e: any) {
+    return { ok: false, error: `Fetch threw: ${e.message}` };
+  }
 
-  const data: any = await res.json();
-  if (!data.access_token) return null;
+  if (!res) return { ok: false, error: "Request timed out after 10s" };
+
+  const text = await res.text();
+  if (!res.ok) {
+    return { ok: false, error: `HTTP ${res.status}: ${text.slice(0, 300)}` };
+  }
+
+  let data: any;
+  try { data = JSON.parse(text); } catch {
+    return { ok: false, error: `Non-JSON response: ${text.slice(0, 200)}` };
+  }
+
+  if (!data.access_token) {
+    return { ok: false, error: `No access_token in response: ${JSON.stringify(data).slice(0, 200)}` };
+  }
 
   const now = Math.floor(Date.now() / 1000);
   return {
+    ok:                  true,
     accessToken:         data.access_token,
     expires:             now + (data.expires_in ?? 86399),
     refreshToken:        data.refresh_token,
@@ -124,18 +141,17 @@ export async function migrateOfflineTokens(): Promise<MigrationResult[]> {
       results.push({ shop: shop.shop, status: "no_token" });
       continue;
     }
-    // If refreshToken already present, token is already expiring
-    if ((shop as any).refreshToken) {
+    if (shop.refreshToken) {
       results.push({ shop: shop.shop, status: "already_expiring" });
       continue;
     }
-    const newTokens = await exchangeToExpiringToken(shop.shop, shop.accessToken);
-    if (!newTokens) {
-      results.push({ shop: shop.shop, status: "failed", error: "Token exchange API failed" });
+    const result = await exchangeToExpiringToken(shop.shop, shop.accessToken);
+    if (!result.ok) {
+      results.push({ shop: shop.shop, status: "failed", error: result.error });
       continue;
     }
-    const ok = await updateSession(shop.id, newTokens);
-    results.push({ shop: shop.shop, status: ok ? "migrated" : "failed", error: ok ? undefined : "DB update failed" });
+    const dbOk = await updateSession(shop.id, result);
+    results.push({ shop: shop.shop, status: dbOk ? "migrated" : "failed", error: dbOk ? undefined : "DB update failed" });
   }
 
   return results;

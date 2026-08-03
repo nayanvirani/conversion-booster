@@ -183,7 +183,11 @@ function MigrationResults({ results }: { results: MigrationResult[] }) {
         <strong>Token migration complete.</strong>{" "}
         {migrated > 0 && <span>✓ {migrated} migrated to expiring tokens. </span>}
         {already > 0 && <span>✓ {already} already using expiring tokens. </span>}
-        {failed > 0 && <span>✗ {failed} failed — check SHOPIFY_API_KEY/SECRET env vars. </span>}
+        {failed > 0 && results.filter((r) => r.status === "failed").map((r, i) => (
+          <div key={i} style={{ marginTop: 4, fontFamily: "monospace", fontSize: 12 }}>
+            ✗ {r.shop}: {r.error}
+          </div>
+        ))}
         {migrated > 0 && "Reload the Shopify Partner Dashboard Monitoring page in ~24h to confirm the warning clears."}
       </div>
     </div>
