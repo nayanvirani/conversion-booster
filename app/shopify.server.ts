@@ -1,11 +1,13 @@
 import "@shopify/shopify-app-remix/adapters/node";
 import {
+  ApiVersion,
   AppDistribution,
   BillingInterval,
   DeliveryMethod,
-  LATEST_API_VERSION,
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
+
+const LATEST_API_VERSION = ApiVersion.July26;
 import { SQLiteSessionStorage } from "@shopify/shopify-app-session-storage-sqlite";
 import { join } from "path";
 
@@ -58,6 +60,7 @@ const shopify = shopifyApp({
   },
   future: {
     unstable_newEmbeddedAuthStrategy: true,
+    expiringOfflineAccessTokens: true,
   },
 });
 
