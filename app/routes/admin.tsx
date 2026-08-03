@@ -1,6 +1,6 @@
-import { json, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
-import { getEnrichedShops, type EnrichedShop } from "../admin.server";
+import { json, type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from "@remix-run/node";
+import { useActionData, useLoaderData, useNavigation, useSubmit } from "@remix-run/react";
+import { getEnrichedShops, migrateOfflineTokens, type EnrichedShop, type MigrationResult } from "../admin.server";
 
 export const meta: MetaFunction = () => [{ title: "Admin — Boostify" }];
 
@@ -13,15 +13,25 @@ export async function loader({ request: _ }: LoaderFunctionArgs) {
   }
 }
 
+export async function action({ request: _ }: ActionFunctionArgs) {
+  const results = await migrateOfflineTokens();
+  return json({ migration: results });
+}
+
 export default function Admin() {
   const { shops, error } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
+  const nav = useNavigation();
+  const submit = useSubmit();
+  const isMigrating = nav.state === "submitting";
 
-  const total   = shops.length;
-  const withTok = shops.filter((s) => s.accessToken).length;
-  const proCount = shops.filter((s) => s.isPro).length;
+  const total      = shops.length;
+  const withTok    = shops.filter((s) => s.accessToken).length;
+  const proCount   = shops.filter((s) => s.isPro).length;
   const trialCount = shops.filter((s) => s.trialActive).length;
-  const freeCount = total - proCount;
-  const mrr = proCount * 9.99;
+  const freeCount  = total - proCount;
+  const mrr        = proCount * 9.99;
+  const needsMigration = shops.some((s) => s.accessToken && !(s as any).refreshToken);
 
   return (
     <div style={S.page}>
@@ -61,6 +71,23 @@ export default function Admin() {
             isText
           />
         </div>
+
+        {/* Migration banner */}
+        {actionData && "migration" in actionData && (
+          <MigrationResults results={(actionData as any).migration} />
+        )}
+        {!actionData && needsMigration && (
+          <div style={S.warnBanner}>
+            <span>⚠️ <strong>Fix overdue:</strong> {withTok} shop(s) use deprecated permanent offline tokens. Shopify requires migration to expiring tokens.</span>
+            <button
+              style={S.migrateBtn}
+              disabled={isMigrating}
+              onClick={() => submit({}, { method: "post" })}
+            >
+              {isMigrating ? "Migrating…" : "Migrate tokens now"}
+            </button>
+          </div>
+        )}
 
         {error && (
           <div style={S.errorBanner}>
@@ -145,6 +172,24 @@ export default function Admin() {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+function MigrationResults({ results }: { results: MigrationResult[] }) {
+  const migrated = results.filter((r) => r.status === "migrated").length;
+  const failed   = results.filter((r) => r.status === "failed").length;
+  const already  = results.filter((r) => r.status === "already_expiring").length;
+
+  return (
+    <div style={{ ...S.warnBanner, background: migrated > 0 ? "#EBF5EF" : "#FEE2E2", borderColor: migrated > 0 ? "#BBF7D0" : "#FECACA", color: migrated > 0 ? "#1A7048" : "#B91C1C", marginBottom: 20 }}>
+      <div>
+        <strong>Token migration complete.</strong>{" "}
+        {migrated > 0 && <span>✓ {migrated} migrated to expiring tokens. </span>}
+        {already > 0 && <span>✓ {already} already using expiring tokens. </span>}
+        {failed > 0 && <span>✗ {failed} failed — check SHOPIFY_API_KEY/SECRET env vars. </span>}
+        {migrated > 0 && "Reload the Shopify Partner Dashboard Monitoring page in ~24h to confirm the warning clears."}
+      </div>
+    </div>
+  );
+}
+
 function PlanBadge({ shop }: { shop: EnrichedShop }) {
   if (!shop.accessToken) return <span style={S.badgeGray}>No Token</span>;
   if (shop.apiError)     return <span style={S.badgeGray}>API Error</span>;
@@ -226,6 +271,17 @@ const S: Record<string, React.CSSProperties> = {
   errorBanner: {
     background: "#FEE2E2", color: "#B91C1C", borderRadius: 10,
     padding: "12px 16px", fontSize: 14, marginBottom: 20,
+  },
+  warnBanner: {
+    background: "#FEF3C7", color: "#92400E", borderRadius: 10,
+    border: "1px solid #FDE68A",
+    padding: "14px 18px", fontSize: 14, marginBottom: 20,
+    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+  },
+  migrateBtn: {
+    background: "#B45309", color: "#fff", border: "none",
+    borderRadius: 8, padding: "8px 18px", fontSize: 13, fontWeight: 700,
+    cursor: "pointer", flexShrink: 0,
   },
   card: { background: "#fff", border: "1px solid #E3DDD5", borderRadius: 12, overflow: "hidden" },
   cardHeader: {
