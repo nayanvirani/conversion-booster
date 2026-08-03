@@ -47,7 +47,13 @@ const shopify = shopifyApp({
   },
   hooks: {
     afterAuth: async ({ session }) => {
-      shopify.registerWebhooks({ session });
+      try {
+        await shopify.registerWebhooks({ session });
+      } catch (err: any) {
+        // 403 is expected on dev stores and when Shopify restricts webhook API access.
+        // Log it but never let it crash the process.
+        console.warn("[webhooks] registerWebhooks failed (non-fatal):", err?.message ?? err);
+      }
     },
   },
   future: {
