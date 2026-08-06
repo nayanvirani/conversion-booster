@@ -16,9 +16,10 @@ import {
 } from "@shopify/polaris";
 import { authenticate, PLANS } from "../shopify.server";
 
-// isTest: true  → Shopify shows a "Test charge" badge so reviewers can approve
-//                  without real money; real merchants can also approve test charges.
-// Switch to false after the app is approved and live.
+// This app uses Shopify Managed Pricing — billing.request() is blocked.
+// Upgrades are handled by redirecting to Shopify's managed pricing page.
+// billing.check() still works to read the current subscription status.
+
 const IS_TEST = process.env.BILLING_TEST !== "false";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -34,48 +35,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { billing } = await authenticate.admin(request);
+  const { billing, redirect } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("intent");
 
   if (intent === "cancel") {
-    try {
-      const { appSubscriptions } = await billing.check({ isTest: IS_TEST });
-      const active = appSubscriptions[0];
-      if (active) {
-        await billing.cancel({
-          subscriptionId: active.id,
-          isTest: IS_TEST,
-          prorate: true,
-        });
-      }
-    } catch {
-      // Billing not available on all store types — non-fatal
-    }
-    return json({ cancelled: true });
+    // For Managed Pricing, cancellation is handled by Shopify.
+    // Redirect merchant to their subscription management page.
+    return redirect(
+      `shopify://admin/charges/${process.env.SHOPIFY_API_KEY}/pricing_plans`
+    );
   }
 
-  // billing.request() always throws a redirect Response to the Shopify billing
-  // confirmation URL. We must re-throw it — catching and swallowing it would
-  // keep the user on this page and block the upgrade flow entirely.
-  try {
-    await billing.request({
-      plan: PLANS.PRO,
-      isTest: IS_TEST,
-      returnUrl: `${process.env.SHOPIFY_APP_URL}/app`,
-    });
-  } catch (err) {
-    // Re-throw redirect Responses from the billing SDK (this is the normal path)
-    if (err instanceof Response) throw err;
-    // Log and surface the real Shopify error for debugging
-    const errMsg = (err as any)?.message ?? String(err);
-    const errData = JSON.stringify((err as any)?.errorData ?? []);
-    console.error("[billing] request failed:", errMsg, errData);
-    return json({ billingError: true, errorMessage: errMsg, errorData: errData });
-  }
-
-  // billing.request() always throws, so this line is unreachable.
-  return null;
+  // Managed Pricing: redirect to Shopify's plan selection page.
+  // The merchant approves the subscription there and is returned to the app.
+  return redirect(
+    `shopify://admin/charges/${process.env.SHOPIFY_API_KEY}/pricing_plans`
+  );
 };
 
 export default function BillingPage() {
@@ -88,15 +64,9 @@ export default function BillingPage() {
       title="Plans"
       backAction={{ content: "Home", url: "/app" }}
     >
-      {actionData && "billingError" in actionData && actionData.billingError && (
+      {actionData && "billingError" in actionData && (actionData as any).billingError && (
         <Banner tone="warning" title="Billing error">
-          <p>Could not initiate the billing flow.</p>
-          {(actionData as any).errorMessage && (
-            <p><strong>Error:</strong> {(actionData as any).errorMessage}</p>
-          )}
-          {(actionData as any).errorData && (actionData as any).errorData !== "[]" && (
-            <p><strong>Details:</strong> {(actionData as any).errorData}</p>
-          )}
+          <p>Could not initiate the billing flow. Please try again or contact support.</p>
         </Banner>
       )}
       {actionData && "cancelled" in actionData && (
@@ -132,7 +102,7 @@ export default function BillingPage() {
                     submit({ intent: "cancel" }, { method: "post" })
                   }
                 >
-                  Downgrade to Free
+                  Manage subscription
                 </Button>
               )}
             </BlockStack>

@@ -2,7 +2,6 @@ import "@shopify/shopify-app-remix/adapters/node";
 import {
   ApiVersion,
   AppDistribution,
-  BillingInterval,
   DeliveryMethod,
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
@@ -26,18 +25,9 @@ const shopify = shopifyApp({
     process.env.DATABASE_PATH || join(process.cwd(), "database.sqlite")
   ),
   distribution: AppDistribution.AppStore,
-  billing: {
-    [PLANS.PRO]: {
-      trialDays: 7,
-      lineItems: [
-        {
-          amount: 9.99,
-          currencyCode: "USD",
-          interval: BillingInterval.Every30Days,
-        },
-      ],
-    },
-  },
+  // No billing config — this app uses Shopify Managed Pricing.
+  // Pricing is defined in the Partner Dashboard; billing.request() is blocked.
+  // Use billing.check() to read current subscription status.
   webhooks: {
     APP_UNINSTALLED: {
       deliveryMethod: DeliveryMethod.Http,
