@@ -1,6 +1,7 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { redirect } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { Form, useLoaderData } from "@remix-run/react";
 import {
   Badge,
   Banner,
@@ -17,19 +18,16 @@ import {
 import { authenticate, PLANS } from "../shopify.server";
 
 // Managed Pricing app: billing.request() is blocked by Shopify.
-// Use currentAppInstallation to read subscription status.
-// Navigate to pricing_plans using window.open(_top) to escape the embedded iframe.
+// Upgrade flow: throw a server-side redirect to /auth/exit-iframe.
+// The SDK's auth.$.tsx loader intercepts that path, loads App Bridge, and
+// calls window.open(pricingUrl, "_top") — navigating the top-level Shopify
+// admin frame to the plan selection page.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
-  // After Shopify redirects back from the plan selection page it appends charge_id.
   const url = new URL(request.url);
   const justUpgraded = url.searchParams.has("charge_id");
-
-  // shopName needed to build the absolute pricing_plans URL client-side.
-  const shopName = session.shop.replace(".myshopify.com", "");
-  const apiKey = process.env.SHOPIFY_API_KEY || "";
 
   try {
     const response = await admin.graphql(`
@@ -57,24 +55,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       (sub) => sub.name === PLANS.PRO && sub.status === "ACTIVE"
     );
 
-    return json({ isPro, subscriptions: activeSubscriptions, justUpgraded, shopName, apiKey });
+    return json({ isPro, subscriptions: activeSubscriptions, justUpgraded, shop: session.shop });
   } catch (err) {
     console.error("[billing] Failed to query subscription status:", err);
-    return json({ isPro: false, subscriptions: [], justUpgraded: false, shopName, apiKey });
+    return json({ isPro: false, subscriptions: [], justUpgraded: false, shop: session.shop });
   }
 };
 
-export default function BillingPage() {
-  const { isPro, justUpgraded, shopName, apiKey } = useLoaderData<typeof loader>();
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
 
-  // Build the absolute Shopify admin pricing URL.
-  // window.open(url, "_top") navigates the top-level frame out of the embedded iframe,
-  // which is the correct pattern for Shopify embedded apps.
+  const shopName = session.shop.replace(".myshopify.com", "");
+  const apiKey = process.env.SHOPIFY_API_KEY || "";
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans`;
 
-  const goToPricingPage = () => {
-    window.open(pricingUrl, "_top");
-  };
+  // Carry forward shop/host/embedded params from the current request URL so
+  // the exit-iframe page can initialise App Bridge correctly.
+  const requestUrl = new URL(request.url);
+  const params = new URLSearchParams(requestUrl.searchParams);
+  params.set("exitIframe", pricingUrl);
+  // Ensure shop is present even if the page was loaded via client-side nav.
+  params.set("shop", session.shop);
+
+  // Throw so Remix propagates this as a Response through the error boundary.
+  // The auth.$.tsx loader calls authenticate.admin which detects /auth/exit-iframe,
+  // renders App Bridge HTML, then calls window.open(pricingUrl, "_top").
+  throw redirect(`/auth/exit-iframe?${params.toString()}`);
+};
+
+export default function BillingPage() {
+  const { isPro, justUpgraded } = useLoaderData<typeof loader>();
 
   return (
     <Page
@@ -142,23 +152,25 @@ export default function BillingPage() {
                 <List.Item>Priority email support</List.Item>
                 <List.Item>All future widgets</List.Item>
               </List>
-              {!isPro ? (
-                <Button
-                  variant="primary"
-                  size="large"
-                  onClick={goToPricingPage}
-                >
-                  Start 7-day free trial
-                </Button>
-              ) : (
-                <Button
-                  variant="plain"
-                  tone="critical"
-                  onClick={goToPricingPage}
-                >
-                  Manage subscription
-                </Button>
-              )}
+              <Form method="post">
+                {!isPro ? (
+                  <Button
+                    variant="primary"
+                    size="large"
+                    submit
+                  >
+                    Start 7-day free trial
+                  </Button>
+                ) : (
+                  <Button
+                    variant="plain"
+                    tone="critical"
+                    submit
+                  >
+                    Manage subscription
+                  </Button>
+                )}
+              </Form>
             </BlockStack>
           </Card>
         </Layout.Section>
