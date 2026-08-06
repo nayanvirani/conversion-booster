@@ -1,7 +1,6 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { redirect } from "@remix-run/node";
+import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Form, useLoaderData } from "@remix-run/react";
+import { useLoaderData } from "@remix-run/react";
 import {
   Badge,
   Banner,
@@ -17,17 +16,39 @@ import {
 } from "@shopify/polaris";
 import { authenticate, PLANS } from "../shopify.server";
 
-// Managed Pricing app: billing.request() is blocked by Shopify.
-// Upgrade flow: throw a server-side redirect to /auth/exit-iframe.
-// The SDK's auth.$.tsx loader intercepts that path, loads App Bridge, and
-// calls window.open(pricingUrl, "_top") — navigating the top-level Shopify
-// admin frame to the plan selection page.
+// Managed Pricing app — billing.request() is blocked by Shopify.
+//
+// Upgrade flow:
+//   1. Component calls window.location.href = exitIframeUrl  (full iframe page load)
+//   2. Browser loads /auth/exit-iframe?exitIframe={pricingUrl}&shop=…
+//   3. SDK (auth.$.tsx → authenticate.admin) detects exit-iframe path,
+//      renders a tiny HTML page that loads the App Bridge CDN script and then
+//      calls window.open(pricingUrl, "_top")
+//   4. App Bridge proxies window.open via postMessage, navigating the parent
+//      Shopify admin frame to the Managed Pricing plan selection page.
+//
+// Using window.location.href is essential: Remix form submissions go via fetch(),
+// and Remix's client router receives the HTML response body but cannot render it
+// as a real document — it just shows the HTTP status ("200") via the error boundary.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const justUpgraded = url.searchParams.has("charge_id");
+
+  // Build the exit-iframe URL here (server-side) so we have access to the
+  // session shop and env vars without exposing them to the client bundle.
+  const shopName = session.shop.replace(".myshopify.com", "");
+  const apiKey = process.env.SHOPIFY_API_KEY || "";
+  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans`;
+
+  const exitParams = new URLSearchParams();
+  exitParams.set("exitIframe", pricingUrl);
+  exitParams.set("shop", session.shop);
+  const host = url.searchParams.get("host");
+  if (host) exitParams.set("host", host);
+  const upgradeUrl = `/auth/exit-iframe?${exitParams.toString()}`;
 
   try {
     const response = await admin.graphql(`
@@ -55,36 +76,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       (sub) => sub.name === PLANS.PRO && sub.status === "ACTIVE"
     );
 
-    return json({ isPro, subscriptions: activeSubscriptions, justUpgraded, shop: session.shop });
+    return json({ isPro, subscriptions: activeSubscriptions, justUpgraded, upgradeUrl });
   } catch (err) {
     console.error("[billing] Failed to query subscription status:", err);
-    return json({ isPro: false, subscriptions: [], justUpgraded: false, shop: session.shop });
+    return json({ isPro: false, subscriptions: [], justUpgraded: false, upgradeUrl });
   }
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-
-  const shopName = session.shop.replace(".myshopify.com", "");
-  const apiKey = process.env.SHOPIFY_API_KEY || "";
-  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans`;
-
-  // Carry forward shop/host/embedded params from the current request URL so
-  // the exit-iframe page can initialise App Bridge correctly.
-  const requestUrl = new URL(request.url);
-  const params = new URLSearchParams(requestUrl.searchParams);
-  params.set("exitIframe", pricingUrl);
-  // Ensure shop is present even if the page was loaded via client-side nav.
-  params.set("shop", session.shop);
-
-  // Throw so Remix propagates this as a Response through the error boundary.
-  // The auth.$.tsx loader calls authenticate.admin which detects /auth/exit-iframe,
-  // renders App Bridge HTML, then calls window.open(pricingUrl, "_top").
-  throw redirect(`/auth/exit-iframe?${params.toString()}`);
-};
-
 export default function BillingPage() {
-  const { isPro, justUpgraded } = useLoaderData<typeof loader>();
+  const { isPro, justUpgraded, upgradeUrl } = useLoaderData<typeof loader>();
+
+  // Full iframe page navigation — NOT a Remix fetch.
+  // The exit-iframe page loads App Bridge then calls window.open(url, "_top").
+  const goToPricingPage = () => {
+    window.location.href = upgradeUrl;
+  };
 
   return (
     <Page
@@ -152,25 +158,23 @@ export default function BillingPage() {
                 <List.Item>Priority email support</List.Item>
                 <List.Item>All future widgets</List.Item>
               </List>
-              <Form method="post">
-                {!isPro ? (
-                  <Button
-                    variant="primary"
-                    size="large"
-                    submit
-                  >
-                    Start 7-day free trial
-                  </Button>
-                ) : (
-                  <Button
-                    variant="plain"
-                    tone="critical"
-                    submit
-                  >
-                    Manage subscription
-                  </Button>
-                )}
-              </Form>
+              {!isPro ? (
+                <Button
+                  variant="primary"
+                  size="large"
+                  onClick={goToPricingPage}
+                >
+                  Start 7-day free trial
+                </Button>
+              ) : (
+                <Button
+                  variant="plain"
+                  tone="critical"
+                  onClick={goToPricingPage}
+                >
+                  Manage subscription
+                </Button>
+              )}
             </BlockStack>
           </Card>
         </Layout.Section>
