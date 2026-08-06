@@ -41,15 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // session shop and env vars without exposing them to the client bundle.
   const shopName = session.shop.replace(".myshopify.com", "");
   const apiKey = process.env.SHOPIFY_API_KEY || "";
-  const appUrl = process.env.SHOPIFY_APP_URL || "";
-  // After the merchant selects a plan, Shopify redirects to return_url with
-  // ?charge_id=...&plan_handle=... appended. Pointing back to our billing page
-  // means the user lands inside the app (which re-auths and shows Pro status)
-  // instead of Shopify's default fallback: settings/apps.
-  const returnUrl = `${appUrl}/app/billing?shop=${session.shop}`;
-  const pricingUrl =
-    `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans` +
-    `?return_url=${encodeURIComponent(returnUrl)}`;
+  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans`;
 
   const exitParams = new URLSearchParams();
   exitParams.set("exitIframe", pricingUrl);
