@@ -16,11 +16,16 @@ import {
 } from "@shopify/polaris";
 import { authenticate, PLANS } from "../shopify.server";
 
+// isTest: true  → Shopify shows a "Test charge" badge so reviewers can approve
+//                  without real money; real merchants can also approve test charges.
+// Switch to false after the app is approved and live.
+const IS_TEST = process.env.BILLING_TEST !== "false";
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { billing } = await authenticate.admin(request);
   try {
     const { hasActivePayment, appSubscriptions } = await billing.check({
-      isTest: false,
+      isTest: IS_TEST,
     });
     return json({ isPro: hasActivePayment, subscriptions: appSubscriptions });
   } catch {
@@ -35,30 +40,38 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "cancel") {
     try {
-      const { appSubscriptions } = await billing.check({ isTest: false });
+      const { appSubscriptions } = await billing.check({ isTest: IS_TEST });
       const active = appSubscriptions[0];
       if (active) {
         await billing.cancel({
           subscriptionId: active.id,
-          isTest: false,
+          isTest: IS_TEST,
           prorate: true,
         });
       }
     } catch {
-      // billing not available on development stores
+      // Billing not available on all store types — non-fatal
     }
     return json({ cancelled: true });
   }
 
+  // billing.request() always throws a redirect Response to the Shopify billing
+  // confirmation URL. We must re-throw it — catching and swallowing it would
+  // keep the user on this page and block the upgrade flow entirely.
   try {
     await billing.request({
-      plan: PLANS.PRO as never,
-      isTest: false,
+      plan: PLANS.PRO,
+      isTest: IS_TEST,
       returnUrl: `${process.env.SHOPIFY_APP_URL}/app`,
     });
-  } catch {
+  } catch (err) {
+    // Re-throw redirect Responses from the billing SDK (this is the normal path)
+    if (err instanceof Response) throw err;
+    // Only reach here on genuine API errors
     return json({ billingError: true });
   }
+
+  // billing.request() always throws, so this line is unreachable.
   return null;
 };
 
@@ -73,8 +86,13 @@ export default function BillingPage() {
       backAction={{ content: "Home", url: "/app" }}
     >
       {actionData && "billingError" in actionData && actionData.billingError && (
-        <Banner tone="warning" title="Billing unavailable on development stores">
-          <p>Billing works on live merchant stores. Install on a production store to subscribe.</p>
+        <Banner tone="warning" title="Billing error">
+          <p>Could not initiate the billing flow. Please try again or contact support.</p>
+        </Banner>
+      )}
+      {actionData && "cancelled" in actionData && (
+        <Banner tone="info" title="Subscription cancelled">
+          <p>You have been downgraded to the Free plan.</p>
         </Banner>
       )}
       <Layout>
