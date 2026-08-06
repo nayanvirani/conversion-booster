@@ -67,8 +67,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   } catch (err) {
     // Re-throw redirect Responses from the billing SDK (this is the normal path)
     if (err instanceof Response) throw err;
-    // Only reach here on genuine API errors
-    return json({ billingError: true });
+    // Log and surface the real Shopify error for debugging
+    const errMsg = (err as any)?.message ?? String(err);
+    const errData = JSON.stringify((err as any)?.errorData ?? []);
+    console.error("[billing] request failed:", errMsg, errData);
+    return json({ billingError: true, errorMessage: errMsg, errorData: errData });
   }
 
   // billing.request() always throws, so this line is unreachable.
@@ -87,7 +90,13 @@ export default function BillingPage() {
     >
       {actionData && "billingError" in actionData && actionData.billingError && (
         <Banner tone="warning" title="Billing error">
-          <p>Could not initiate the billing flow. Please try again or contact support.</p>
+          <p>Could not initiate the billing flow.</p>
+          {(actionData as any).errorMessage && (
+            <p><strong>Error:</strong> {(actionData as any).errorMessage}</p>
+          )}
+          {(actionData as any).errorData && (actionData as any).errorData !== "[]" && (
+            <p><strong>Details:</strong> {(actionData as any).errorData}</p>
+          )}
         </Banner>
       )}
       {actionData && "cancelled" in actionData && (
