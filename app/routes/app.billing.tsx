@@ -1,6 +1,6 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
+import { Form, useLoaderData } from "@remix-run/react";
 import {
   Badge,
   Banner,
@@ -18,23 +18,61 @@ import { authenticate } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 import { updatePlanMetafield } from "../plan.server";
 
-// ─── Plan detection strategy ────────────────────────────────────────────────
-//
-// activeSubscriptions includes test subscriptions on dev stores, so a single
-// API call works for both store types.  The subtlety is timing: there's a
-// brief lag between the merchant clicking "Test with this plan" and the
-// subscription appearing in the API.  Shopify fires a plan_handle redirect
-// immediately, so we use it as a trust-worthy override.
-//
-// Priority order (highest → lowest):
-//   1. plan_handle=free  — explicit downgrade from Shopify's redirect
-//   2. plan_handle=pro   — explicit upgrade; trust on dev stores (API lag),
-//                          and confirmed by API on production
-//   3. activeSubscriptions — live API truth on both store types
-//   4. SQLite cache      — fallback when the API call fails entirely
-//
-// Security: plan_handle=pro is NOT trusted on production stores without API
-// confirmation, so a fake URL param cannot grant Pro access to paying merchants.
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+async function getSubscriptionStatus(admin: any) {
+  const response = await admin.graphql(`
+    #graphql
+    query GetPlanStatus {
+      currentAppInstallation {
+        id
+        activeSubscriptions { id status name test }
+      }
+      shop { plan { partnerDevelopment } }
+    }
+  `);
+  const data = await response.json();
+  return {
+    appInstallationId: (data.data?.currentAppInstallation?.id ?? "") as string,
+    subs: (data.data?.currentAppInstallation?.activeSubscriptions ?? []) as Array<{
+      id: string; status: string; name: string; test: boolean;
+    }>,
+    isDevStore: (data.data?.shop?.plan?.partnerDevelopment ?? false) as boolean,
+  };
+}
+
+async function cancelAllSubscriptions(admin: any, subs: Array<{ id: string }>) {
+  if (subs.length === 0) return;
+  await Promise.allSettled(
+    subs.map((sub) =>
+      admin.graphql(
+        `#graphql
+         mutation CancelSub($id: ID!) {
+           appSubscriptionCancel(id: $id) {
+             userErrors { field message }
+           }
+         }`,
+        { variables: { id: sub.id } }
+      )
+    )
+  );
+}
+
+// ─── Action — "Force sync to Free" button ───────────────────────────────────
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { admin, session } = await authenticate.admin(request);
+  const { subs, appInstallationId } = await getSubscriptionStatus(admin);
+
+  console.log(`[billing/action] force-sync-free for ${session.shop}, cancelling ${subs.length} sub(s)`);
+  await cancelAllSubscriptions(admin, subs);
+  await setShopPlan(session.shop, "free");
+  await updatePlanMetafield(admin, appInstallationId, false);
+
+  return redirect("/app/billing");
+};
+
+// ─── Loader ──────────────────────────────────────────────────────────────────
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -48,25 +86,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
 
   try {
-    const response = await admin.graphql(`
-      #graphql
-      query GetPlanStatus {
-        currentAppInstallation {
-          id
-          activeSubscriptions { id status }
-        }
-        shop {
-          plan { partnerDevelopment }
-        }
-      }
-    `);
-    const data = await response.json();
-    const appInstallationId: string =
-      data.data?.currentAppInstallation?.id ?? "";
-    const subs: Array<{ id: string; status: string }> =
-      data.data?.currentAppInstallation?.activeSubscriptions ?? [];
-    const isDevStore: boolean =
-      data.data?.shop?.plan?.partnerDevelopment ?? false;
+    const { appInstallationId, subs, isDevStore } = await getSubscriptionStatus(admin);
 
     const isProFromAPI = subs.some((s) =>
       ["ACTIVE", "TRIALING"].includes(s.status)
@@ -76,33 +96,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     let isPro: boolean;
 
     if (planHandleLower === "free") {
-      // Merchant selected the Free plan. Force Free and explicitly cancel any
-      // active subscription — on dev stores Shopify does NOT auto-cancel test
-      // subscriptions when the merchant clicks "Free", so activeSubscriptions
-      // would keep returning ACTIVE on the next page load without this step.
+      // ── Explicit Free redirect from Shopify pricing page ──────────────────
+      // Shopify does NOT auto-cancel test subscriptions on dev stores when the
+      // merchant selects Free. Cancel them here so subsequent loads are correct.
       isPro = false;
       if (subs.length > 0) {
-        console.log(`[billing] cancelling ${subs.length} subscription(s) for ${session.shop}`);
-        await Promise.allSettled(
-          subs.map((sub) =>
-            admin.graphql(
-              `#graphql
-               mutation CancelSub($id: ID!) {
-                 appSubscriptionCancel(id: $id) {
-                   userErrors { field message }
-                 }
-               }`,
-              { variables: { id: sub.id } }
-            )
-          )
-        );
+        console.log(`[billing] plan_handle=free — cancelling ${subs.length} sub(s) for ${session.shop}`);
+        await cancelAllSubscriptions(admin, subs);
       }
     } else if (planHandleLower === "pro") {
-      // On dev stores trust immediately (API may lag after test subscription).
-      // On production stores verify with the live API before granting Pro.
+      // ── Explicit Pro redirect from Shopify pricing page ───────────────────
+      // Trust immediately on dev stores (API may lag after test sub creation).
+      // On production stores verify with the live API first.
       isPro = isDevStore ? true : isProFromAPI;
     } else {
-      // No plan_handle (regular page load) — use live API as single source of truth.
+      // ── Regular page load (no plan_handle) ───────────────────────────────
+      // Use activeSubscriptions as the source of truth.
       isPro = isProFromAPI;
     }
 
@@ -110,10 +119,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     await updatePlanMetafield(admin, appInstallationId, isPro);
 
     console.log(
-      `[billing] shop=${session.shop} dev=${isDevStore} plan_handle="${planHandleParam}" subs=${JSON.stringify(subs)} → isPro=${isPro}`
+      `[billing] shop=${session.shop} dev=${isDevStore} plan_handle="${planHandleParam}" ` +
+      `subs=${subs.length} isProFromAPI=${isProFromAPI} → isPro=${isPro}`
     );
 
-    return json({ isPro, justChangedPlan, pricingUrl });
+    return json({ isPro, justChangedPlan, pricingUrl, isDevStore });
   } catch (err) {
     console.error("[billing] GraphQL failed, using cached plan:", err);
     const storedPlan = await getShopPlan(session.shop);
@@ -121,12 +131,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       isPro: (storedPlan ?? "free").toLowerCase() === "pro",
       justChangedPlan,
       pricingUrl,
+      isDevStore: false,
     });
   }
 };
 
+// ─── UI ──────────────────────────────────────────────────────────────────────
+
 export default function BillingPage() {
-  const { isPro, justChangedPlan, pricingUrl } = useLoaderData<typeof loader>();
+  const { isPro, justChangedPlan, pricingUrl, isDevStore } =
+    useLoaderData<typeof loader>();
 
   const goToPricingPage = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -147,9 +161,28 @@ export default function BillingPage() {
       )}
       {justChangedPlan && !isPro && (
         <Banner tone="info" title="Switched to Free">
-          <p>You're now on the Free plan. You can upgrade again any time.</p>
+          <p>You&apos;re now on the Free plan. You can upgrade again any time.</p>
         </Banner>
       )}
+
+      {/* Self-healing banner — only shown on dev stores when plan is out of sync.
+          On production stores activeSubscriptions is always authoritative. */}
+      {isDevStore && isPro && (
+        <Banner tone="warning" title="Shopify shows Free as your current plan?">
+          <BlockStack gap="200">
+            <p>
+              If the Shopify pricing page already shows <strong>Free</strong> as
+              current but this page still shows Pro, click below to sync.
+            </p>
+            <Form method="post">
+              <Button submit variant="plain" tone="critical">
+                Force sync to Free
+              </Button>
+            </Form>
+          </BlockStack>
+        </Banner>
+      )}
+
       <Layout>
         <Layout.Section variant="oneHalf">
           <Card>
@@ -164,7 +197,7 @@ export default function BillingPage() {
                 <List.Item>Announcement Bar</List.Item>
                 <List.Item>Trust Badges</List.Item>
                 <List.Item>Countdown Timer</List.Item>
-                <List.Item>"Powered by Boostify" branding</List.Item>
+                <List.Item>&quot;Powered by Boostify&quot; branding</List.Item>
               </List>
             </BlockStack>
           </Card>
@@ -183,11 +216,13 @@ export default function BillingPage() {
                 <Badge tone="info">7-day free trial included</Badge>
               )}
               <Divider />
-              <Text as="p" variant="bodyMd" tone="subdued">Everything in Free, plus:</Text>
+              <Text as="p" variant="bodyMd" tone="subdued">
+                Everything in Free, plus:
+              </Text>
               <List>
                 <List.Item>Sticky Add to Cart</List.Item>
                 <List.Item>Social Proof Popup</List.Item>
-                <List.Item>No "Powered by" branding</List.Item>
+                <List.Item>No &quot;Powered by&quot; branding</List.Item>
                 <List.Item>Priority email support</List.Item>
                 <List.Item>All future widgets</List.Item>
               </List>
