@@ -38,7 +38,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // Build the pricing URL server-side (needs session + env vars).
   const shopName = session.shop.replace(".myshopify.com", "");
   const apiKey = process.env.SHOPIFY_API_KEY || "";
-  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans`;
+
+  // After plan selection, Shopify redirects to return_url (must be a Shopify admin
+  // URL — external URLs like Railway are rejected). The admin URL keeps the merchant
+  // in the embedded app. The app handle "conversion-booster-11" is the Shopify admin
+  // identifier visible in: admin.shopify.com/store/{shop}/apps/conversion-booster-11
+  const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
+  const returnUrl = `https://admin.shopify.com/store/${shopName}/apps/${appHandle}/billing`;
+  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans?return_url=${encodeURIComponent(returnUrl)}`;
 
   try {
     const response = await admin.graphql(`
