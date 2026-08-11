@@ -15,28 +15,29 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { getShopPlan, setShopPlan } from "../db.server";
+import { setShopPlan } from "../db.server";
 
-// Shopify App Pricing (Managed Pricing) — billing.request() is blocked.
+// Shopify App Pricing (Managed Pricing).
 //
-// Navigation to the pricing page uses window.shopify.redirectTo(url) — the
-// App Bridge v4 postMessage API for top-frame navigation.
+// SECURITY: ?plan_handle in the URL is NEVER used to grant Pro access.
+// We always query currentAppInstallation.activeSubscriptions (Shopify GraphQL)
+// to get the real subscription state. A fake ?plan_handle=pro in the URL will
+// fail here because GraphQL will return no active subscription for that shop.
 //
-// SECURITY: ?plan_handle in the URL is NEVER trusted directly to grant Pro
-// access. It is only a signal that the merchant just changed their plan on
-// the Shopify pricing page. We always verify the actual subscription status
-// with billing.check() (Shopify Admin API) before storing or displaying anything.
+// Why not billing.check()?
+// billing.check() without billing config in shopify.server.ts has inconsistent
+// behaviour for Managed Pricing — it was returning hasActivePayment=true even
+// when the shop was clearly on the Free plan (confirmed by Shopify's own
+// pricing_plans UI). activeSubscriptions is the raw source it reads from, so
+// we go there directly.
 //
-// Exception: plan_handle=free overrides billing.check() for the immediate
-// display only — Shopify may keep a Pro subscription technically "active"
-// until the billing period ends even after the merchant downgrades, but we
-// respect the merchant's explicit choice from the pricing page.
-//
-// SQLite stores the API-verified plan so the home page reads a consistent
-// value without making a separate API call on every navigation.
+// plan_handle=free is still used as an immediate UI override for downgrade:
+// on dev stores Shopify cancels test subscriptions immediately, so in practice
+// activeSubscriptions returns [] — but the override ensures correct display
+// even if there's a lag.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { billing, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const planHandleParam = url.searchParams.get("plan_handle");
@@ -48,37 +49,54 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
 
   try {
-    // ALWAYS verify with Shopify — never derive plan status from the URL alone.
-    // billing.check() calls currentAppInstallation.activeSubscriptions under
-    // the hood and works for Shopify App Pricing / Managed Pricing.
-    const { hasActivePayment } = await billing.check({ isTest: false });
+    // Query the live subscription state from Shopify.
+    // activeSubscriptions is empty when the shop is on the Free plan.
+    // Any ACTIVE or TRIALING entry means the shop has a paid plan.
+    // We intentionally do NOT filter by name — the plan name in Partner Dashboard
+    // ("PRO", "Pro", "Pro Plan", etc.) is not guaranteed to match any constant.
+    const response = await admin.graphql(`
+      #graphql
+      query GetActiveSubscriptions {
+        currentAppInstallation {
+          activeSubscriptions {
+            id
+            name
+            status
+            test
+          }
+        }
+      }
+    `);
+    const data = await response.json();
+    const subs: Array<{ id: string; name: string; status: string; test: boolean }> =
+      data.data?.currentAppInstallation?.activeSubscriptions ?? [];
 
-    // Determine the verified plan:
-    // - plan_handle=free: merchant just chose Free on the pricing page.
-    //   Override billing.check() even if it still says Pro (billing period lag).
-    //   This is safe — Shopify generated the redirect; the user didn't type it.
-    // - plan_handle=pro or any other value: IGNORE the URL param.
-    //   Trust billing.check() exclusively. A user manually typing plan_handle=pro
-    //   would fail here because billing.check() returns false for non-subscribers.
-    // - No plan_handle: trust billing.check() as normal.
-    const isPro = planHandleParam === "free" ? false : hasActivePayment;
+    console.log("[billing] activeSubscriptions:", JSON.stringify(subs));
 
-    // Persist the API-verified result so the home page stays consistent.
+    const isProFromShopify = subs.some((s) =>
+      ["ACTIVE", "TRIALING"].includes(s.status)
+    );
+
+    // plan_handle=free: user just chose Free on the pricing page.
+    // Override Shopify result to show Free immediately (handles billing-period lag).
+    // This is safe — Shopify generated the redirect, not the user.
+    //
+    // plan_handle=pro or any other value: IGNORED for isPro.
+    // Shopify API must confirm an active subscription — URL param alone is not enough.
+    const isPro = planHandleParam === "free" ? false : isProFromShopify;
+
+    // Persist verified result so home page stays consistent.
     await setShopPlan(session.shop, isPro ? "pro" : "free");
 
     console.log(
-      `[billing] isPro=${isPro} (billingCheck=${hasActivePayment}, plan_handle="${planHandleParam}") → stored "${isPro ? "pro" : "free"}"`
+      `[billing] isPro=${isPro} (shopify=${isProFromShopify}, plan_handle="${planHandleParam}")`
     );
 
     return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
-    console.error("[billing] billing.check() failed:", err);
-
-    // Fallback: read the last verified value from SQLite.
-    // Do NOT grant Pro from plan_handle=pro — we couldn't verify with Shopify.
-    const storedPlan = await getShopPlan(session.shop);
-    const isPro = storedPlan?.toLowerCase() === "pro";
-    return json({ isPro, justChangedPlan, pricingUrl });
+    console.error("[billing] GraphQL query failed:", err);
+    // On error do NOT grant Pro from URL param. Return false (safe default).
+    return json({ isPro: false, justChangedPlan, pricingUrl });
   }
 };
 

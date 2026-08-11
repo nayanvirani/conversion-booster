@@ -18,30 +18,45 @@ import { authenticate } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { billing, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   // Shopify App Pricing redirects after plan selection with ?plan_handle=<handle>.
-  // Forward to the billing page — it verifies with billing.check() and persists
-  // the result. Never process plan_handle directly here to avoid granting Pro
-  // via a manually crafted URL.
+  // Forward to the billing page where the subscription is verified via GraphQL
+  // and persisted. Never act on plan_handle here to prevent fake URL grants.
   const url = new URL(request.url);
   if (url.searchParams.has("plan_handle")) {
     const params = url.searchParams.toString();
     return redirect(`/app/billing?${params}`);
   }
 
-  // Always verify with Shopify API — never derive plan status from a URL param
-  // or from SQLite alone (SQLite could be stale or manually tampered).
-  // SQLite is kept in sync here so other pages can read a consistent cached value.
+  // Verify with Shopify's activeSubscriptions — the same raw data source that
+  // Shopify's own pricing_plans UI uses. billing.check() without billing config
+  // has inconsistent behaviour for Managed Pricing; direct GraphQL is reliable.
+  // Empty array = Free plan. Any ACTIVE/TRIALING entry = Pro.
   try {
-    const { hasActivePayment } = await billing.check({ isTest: false });
+    const response = await admin.graphql(`
+      #graphql
+      query GetActiveSubscriptions {
+        currentAppInstallation {
+          activeSubscriptions {
+            id
+            status
+          }
+        }
+      }
+    `);
+    const data = await response.json();
+    const subs: Array<{ id: string; status: string }> =
+      data.data?.currentAppInstallation?.activeSubscriptions ?? [];
 
-    // Sync SQLite with what Shopify says (fire-and-forget, doesn't block the response).
-    setShopPlan(session.shop, hasActivePayment ? "pro" : "free");
+    const isPro = subs.some((s) => ["ACTIVE", "TRIALING"].includes(s.status));
 
-    return json({ isPro: hasActivePayment });
+    // Keep SQLite in sync (fire-and-forget).
+    setShopPlan(session.shop, isPro ? "pro" : "free");
+
+    return json({ isPro });
   } catch {
-    // Shopify API failed — fall back to last verified value from SQLite.
+    // GraphQL failed — fall back to last verified value from SQLite.
     const storedPlan = await getShopPlan(session.shop);
     return json({ isPro: storedPlan?.toLowerCase() === "pro" });
   }
