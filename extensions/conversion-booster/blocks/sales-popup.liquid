@@ -1,3 +1,11 @@
+{%- comment -%}
+  Pro-only widget — gate by the plan metafield written by the Remix app.
+  app.metafields.boostify.plan is updated on every app page load so it
+  reflects the merchant's current billing status without a runtime API call.
+{%- endcomment -%}
+{%- assign cb_plan = app.metafields.boostify.plan | default: 'free' -%}
+{%- if cb_plan == 'pro' -%}
+
 {{ 'cb-core.css' | asset_url | stylesheet_tag }}
 
 <div
@@ -12,6 +20,8 @@
   data-max="{{ block.settings.max_popups }}"
 ></div>
 <script src="{{ 'cb-popup.js' | asset_url }}" defer></script>
+
+{%- endif -%}
 
 {% schema %}
 {

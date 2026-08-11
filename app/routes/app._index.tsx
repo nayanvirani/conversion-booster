@@ -14,9 +14,9 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
-import { authenticate } from "../shopify.server";
-import { PLANS } from "../shopify.server";
+import { authenticate, PLANS } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
+import { updatePlanMetafield } from "../plan.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, billing, session } = await authenticate.admin(request);
@@ -39,6 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       #graphql
       query GetPlanStatus {
         currentAppInstallation {
+          id
           activeSubscriptions { id status }
         }
         shop {
@@ -47,6 +48,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     `);
     const data = await response.json();
+    const appInstallationId: string =
+      data.data?.currentAppInstallation?.id ?? "";
     const subs: Array<{ id: string; status: string }> =
       data.data?.currentAppInstallation?.activeSubscriptions ?? [];
     const isDevStore: boolean =
@@ -69,6 +72,9 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       isPro = subs.some((s) => ["ACTIVE", "TRIALING"].includes(s.status));
       await setShopPlan(session.shop, isPro ? "pro" : "free");
     }
+
+    // Fire-and-forget — keep theme metafield in sync without blocking the page.
+    updatePlanMetafield(admin, appInstallationId, isPro).catch(() => {});
 
     return json({ isPro });
   } catch {

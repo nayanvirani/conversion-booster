@@ -14,9 +14,9 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
-import { authenticate } from "../shopify.server";
-import { PLANS } from "../shopify.server";
+import { authenticate, PLANS } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
+import { updatePlanMetafield } from "../plan.server";
 
 // Plan detection strategy:
 //
@@ -51,6 +51,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       #graphql
       query GetPlanStatus {
         currentAppInstallation {
+          id
           activeSubscriptions { id status }
         }
         shop {
@@ -59,6 +60,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       }
     `);
     const data = await response.json();
+    const appInstallationId: string =
+      data.data?.currentAppInstallation?.id ?? "";
     const subs: Array<{ id: string; status: string }> =
       data.data?.currentAppInstallation?.activeSubscriptions ?? [];
     const isDevStore: boolean =
@@ -103,6 +106,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       await setShopPlan(session.shop, isPro ? "pro" : "free");
       console.log(`[billing] PROD subs=${subs.length} plan_handle="${planHandleParam}" → isPro=${isPro}`);
     }
+
+    // Write plan to app installation metafield so Liquid theme extensions
+    // can gate Pro-only widgets (sticky-atc, sales-popup) without an API call.
+    await updatePlanMetafield(admin, appInstallationId, isPro);
 
     return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
