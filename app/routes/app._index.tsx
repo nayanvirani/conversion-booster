@@ -29,18 +29,23 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect(`/app/billing?${params}`);
   }
 
-  // Verify with Shopify's activeSubscriptions — the same raw data source that
-  // Shopify's own pricing_plans UI uses. billing.check() without billing config
-  // has inconsistent behaviour for Managed Pricing; direct GraphQL is reliable.
-  // Empty array = Free plan. Any ACTIVE/TRIALING entry = Pro.
+  // Query subscription status + store type in one call.
+  // Dev stores always return [] for activeSubscriptions (Shopify restriction) —
+  // fall back to SQLite (written by the billing page from plan_handle redirects).
+  // Production stores: activeSubscriptions is authoritative.
   try {
     const response = await admin.graphql(`
       #graphql
-      query GetActiveSubscriptions {
+      query GetSubscriptionStatus {
         currentAppInstallation {
           activeSubscriptions {
             id
             status
+          }
+        }
+        shop {
+          plan {
+            partnerDevelopment
           }
         }
       }
@@ -48,15 +53,35 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const data = await response.json();
     const subs: Array<{ id: string; status: string }> =
       data.data?.currentAppInstallation?.activeSubscriptions ?? [];
+    const isDevStore: boolean =
+      data.data?.shop?.plan?.partnerDevelopment ?? false;
 
-    const isPro = subs.some((s) => ["ACTIVE", "TRIALING"].includes(s.status));
+    const isProFromShopify = subs.some((s) =>
+      ["ACTIVE", "TRIALING"].includes(s.status)
+    );
 
-    // Keep SQLite in sync (fire-and-forget).
-    setShopPlan(session.shop, isPro ? "pro" : "free");
+    let isPro: boolean;
+    if (isProFromShopify) {
+      // Production store with confirmed active subscription.
+      isPro = true;
+    } else if (isDevStore) {
+      // Dev store: Shopify never returns subscriptions, so read SQLite.
+      // SQLite is written by the billing page from Shopify's plan_handle redirect.
+      const storedPlan = await getShopPlan(session.shop);
+      isPro = storedPlan?.toLowerCase() === "pro";
+    } else {
+      // Production store, no active subscription → Free.
+      isPro = false;
+    }
+
+    // Keep SQLite in sync on production stores.
+    if (!isDevStore) {
+      setShopPlan(session.shop, isPro ? "pro" : "free");
+    }
 
     return json({ isPro });
   } catch {
-    // GraphQL failed — fall back to last verified value from SQLite.
+    // GraphQL failed — fall back to SQLite.
     const storedPlan = await getShopPlan(session.shop);
     return json({ isPro: storedPlan?.toLowerCase() === "pro" });
   }
