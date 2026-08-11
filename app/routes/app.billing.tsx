@@ -22,54 +22,71 @@ import { getShopPlan, setShopPlan } from "../db.server";
 // Navigation to the pricing page uses window.shopify.redirectTo(url) — the
 // App Bridge v4 postMessage API for top-frame navigation.
 //
-// After plan selection, Shopify redirects with ?plan_handle=<handle>.
-// The home page loader forwards all such visits here so plan changes are
-// handled in one place and the plan_handle is always persisted to SQLite.
+// SECURITY: ?plan_handle in the URL is NEVER trusted directly to grant Pro
+// access. It is only a signal that the merchant just changed their plan on
+// the Shopify pricing page. We always verify the actual subscription status
+// with billing.check() (Shopify Admin API) before storing or displaying anything.
 //
-// We use the persisted plan_handle (SQLite) as the single source of truth.
-// billing.check() / activeSubscriptions are NOT used because:
-//   - billing.check() keeps returning hasActivePayment=true until the billing
-//     period ends even after the merchant switches to Free.
-//   - activeSubscriptions filters by plan name which may not match exactly.
-// The plan_handle Shopify sends is immediate, accurate, and plan-agnostic.
+// Exception: plan_handle=free overrides billing.check() for the immediate
+// display only — Shopify may keep a Pro subscription technically "active"
+// until the billing period ends even after the merchant downgrades, but we
+// respect the merchant's explicit choice from the pricing page.
+//
+// SQLite stores the API-verified plan so the home page reads a consistent
+// value without making a separate API call on every navigation.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { billing, session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const planHandleParam = url.searchParams.get("plan_handle");
-  const justUpgraded = planHandleParam !== null;
-
-  // When Shopify redirects back after plan selection, persist the plan_handle.
-  // This is the only reliable signal of which plan the merchant is now on.
-  if (planHandleParam) {
-    await setShopPlan(session.shop, planHandleParam);
-    console.log(`[billing] Stored plan_handle="${planHandleParam}" for ${session.shop}`);
-  }
-
-  // Read the stored plan. If no record exists yet (fresh install before any
-  // plan selection), the merchant is on the Free plan by default.
-  const storedPlan = await getShopPlan(session.shop);
-  const isPro = storedPlan?.toLowerCase() === "pro";
-
-  console.log(`[billing] isPro=${isPro} (storedPlan="${storedPlan}", plan_handle="${planHandleParam}")`);
+  const justChangedPlan = planHandleParam !== null;
 
   // Build the pricing URL server-side.
   const shopName = session.shop.replace(".myshopify.com", "");
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
 
-  return json({ isPro, justUpgraded, pricingUrl });
+  try {
+    // ALWAYS verify with Shopify — never derive plan status from the URL alone.
+    // billing.check() calls currentAppInstallation.activeSubscriptions under
+    // the hood and works for Shopify App Pricing / Managed Pricing.
+    const { hasActivePayment } = await billing.check({ isTest: false });
+
+    // Determine the verified plan:
+    // - plan_handle=free: merchant just chose Free on the pricing page.
+    //   Override billing.check() even if it still says Pro (billing period lag).
+    //   This is safe — Shopify generated the redirect; the user didn't type it.
+    // - plan_handle=pro or any other value: IGNORE the URL param.
+    //   Trust billing.check() exclusively. A user manually typing plan_handle=pro
+    //   would fail here because billing.check() returns false for non-subscribers.
+    // - No plan_handle: trust billing.check() as normal.
+    const isPro = planHandleParam === "free" ? false : hasActivePayment;
+
+    // Persist the API-verified result so the home page stays consistent.
+    await setShopPlan(session.shop, isPro ? "pro" : "free");
+
+    console.log(
+      `[billing] isPro=${isPro} (billingCheck=${hasActivePayment}, plan_handle="${planHandleParam}") → stored "${isPro ? "pro" : "free"}"`
+    );
+
+    return json({ isPro, justChangedPlan, pricingUrl });
+  } catch (err) {
+    console.error("[billing] billing.check() failed:", err);
+
+    // Fallback: read the last verified value from SQLite.
+    // Do NOT grant Pro from plan_handle=pro — we couldn't verify with Shopify.
+    const storedPlan = await getShopPlan(session.shop);
+    const isPro = storedPlan?.toLowerCase() === "pro";
+    return json({ isPro, justChangedPlan, pricingUrl });
+  }
 };
 
 export default function BillingPage() {
-  const { isPro, justUpgraded, pricingUrl } = useLoaderData<typeof loader>();
+  const { isPro, justChangedPlan, pricingUrl } = useLoaderData<typeof loader>();
 
   const goToPricingPage = () => {
-    // App Bridge v4 exposes window.shopify.redirectTo() which uses postMessage
-    // to navigate the parent Shopify admin frame. This is the correct method
-    // for embedded apps — it does not require a user gesture and is not
-    // intercepted/blocked unlike window.open(url, "_top").
+    // App Bridge v4 — postMessage navigation, no user-gesture restriction.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const shopify = (window as any).shopify;
     if (shopify?.redirectTo) {
@@ -84,12 +101,12 @@ export default function BillingPage() {
       title="Plans"
       backAction={{ content: "Home", url: "/app" }}
     >
-      {justUpgraded && isPro && (
+      {justChangedPlan && isPro && (
         <Banner tone="success" title="Welcome to Pro!">
           <p>Your Pro subscription is now active. Enjoy all Pro features.</p>
         </Banner>
       )}
-      {justUpgraded && !isPro && (
+      {justChangedPlan && !isPro && (
         <Banner tone="info" title="Switched to Free">
           <p>You're now on the Free plan. You can upgrade again any time.</p>
         </Banner>
@@ -146,19 +163,11 @@ export default function BillingPage() {
                 <List.Item>All future widgets</List.Item>
               </List>
               {!isPro ? (
-                <Button
-                  variant="primary"
-                  size="large"
-                  onClick={goToPricingPage}
-                >
+                <Button variant="primary" size="large" onClick={goToPricingPage}>
                   Start 7-day free trial
                 </Button>
               ) : (
-                <Button
-                  variant="plain"
-                  tone="critical"
-                  onClick={goToPricingPage}
-                >
+                <Button variant="plain" tone="critical" onClick={goToPricingPage}>
                   Manage subscription
                 </Button>
               )}

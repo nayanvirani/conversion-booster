@@ -15,28 +15,36 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { getShopPlan } from "../db.server";
+import { getShopPlan, setShopPlan } from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { billing, session } = await authenticate.admin(request);
 
   // Shopify App Pricing redirects after plan selection with ?plan_handle=<handle>.
-  // These may land here (home) if the per-plan "Welcome link" in Partner Dashboard
-  // is blank or set to the app root. Forward to the billing page so the plan_handle
-  // is persisted and the merchant sees a proper confirmation.
+  // Forward to the billing page — it verifies with billing.check() and persists
+  // the result. Never process plan_handle directly here to avoid granting Pro
+  // via a manually crafted URL.
   const url = new URL(request.url);
   if (url.searchParams.has("plan_handle")) {
     const params = url.searchParams.toString();
     return redirect(`/app/billing?${params}`);
   }
 
-  // Use the persisted plan_handle as the single source of truth.
-  // billing.check() keeps returning Pro until the billing period ends even after
-  // the merchant switches to Free — plan_handle from Shopify is immediate and accurate.
-  const storedPlan = await getShopPlan(session.shop);
-  const isPro = storedPlan?.toLowerCase() === "pro";
+  // Always verify with Shopify API — never derive plan status from a URL param
+  // or from SQLite alone (SQLite could be stale or manually tampered).
+  // SQLite is kept in sync here so other pages can read a consistent cached value.
+  try {
+    const { hasActivePayment } = await billing.check({ isTest: false });
 
-  return json({ isPro });
+    // Sync SQLite with what Shopify says (fire-and-forget, doesn't block the response).
+    setShopPlan(session.shop, hasActivePayment ? "pro" : "free");
+
+    return json({ isPro: hasActivePayment });
+  } catch {
+    // Shopify API failed — fall back to last verified value from SQLite.
+    const storedPlan = await getShopPlan(session.shop);
+    return json({ isPro: storedPlan?.toLowerCase() === "pro" });
+  }
 };
 
 const WIDGETS = [
