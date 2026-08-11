@@ -18,18 +18,16 @@ import { authenticate, PLANS } from "../shopify.server";
 
 // Managed Pricing app — billing.request() is blocked by Shopify.
 //
-// Upgrade flow:
-//   1. Component calls window.location.href = exitIframeUrl  (full iframe page load)
-//   2. Browser loads /auth/exit-iframe?exitIframe={pricingUrl}&shop=…
-//   3. SDK (auth.$.tsx → authenticate.admin) detects exit-iframe path,
-//      renders a tiny HTML page that loads the App Bridge CDN script and then
-//      calls window.open(pricingUrl, "_top")
-//   4. App Bridge proxies window.open via postMessage, navigating the parent
-//      Shopify admin frame to the Managed Pricing plan selection page.
+// Navigation to the pricing page MUST happen synchronously inside the onClick
+// user-gesture handler. Any intermediate navigation (window.location.href,
+// Remix form POST, exit-iframe redirect) consumes the user-gesture activation
+// before window.open(_top) runs, causing the browser to block the top-level
+// navigation and Shopify admin to fall back to the app index page.
 //
-// Using window.location.href is essential: Remix form submissions go via fetch(),
-// and Remix's client router receives the HTML response body but cannot render it
-// as a real document — it just shows the HTTP status ("200") via the error boundary.
+// Solution: window.open(pricingUrl, "_top") called directly in onClick.
+// The Shopify embedded iframe allows allow-top-navigation-by-user-activation,
+// so a synchronous window.open within the click handler navigates the parent
+// Shopify admin frame to the Managed Pricing plan selection page.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -37,18 +35,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const justUpgraded = url.searchParams.has("charge_id");
 
-  // Build the exit-iframe URL here (server-side) so we have access to the
-  // session shop and env vars without exposing them to the client bundle.
+  // Build the pricing URL server-side (needs session + env vars).
   const shopName = session.shop.replace(".myshopify.com", "");
   const apiKey = process.env.SHOPIFY_API_KEY || "";
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans`;
-
-  const exitParams = new URLSearchParams();
-  exitParams.set("exitIframe", pricingUrl);
-  exitParams.set("shop", session.shop);
-  const host = url.searchParams.get("host");
-  if (host) exitParams.set("host", host);
-  const upgradeUrl = `/auth/exit-iframe?${exitParams.toString()}`;
 
   try {
     const response = await admin.graphql(`
@@ -76,20 +66,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       (sub) => sub.name === PLANS.PRO && sub.status === "ACTIVE"
     );
 
-    return json({ isPro, subscriptions: activeSubscriptions, justUpgraded, upgradeUrl });
+    return json({ isPro, subscriptions: activeSubscriptions, justUpgraded, pricingUrl });
   } catch (err) {
     console.error("[billing] Failed to query subscription status:", err);
-    return json({ isPro: false, subscriptions: [], justUpgraded: false, upgradeUrl });
+    return json({ isPro: false, subscriptions: [], justUpgraded: false, pricingUrl });
   }
 };
 
 export default function BillingPage() {
-  const { isPro, justUpgraded, upgradeUrl } = useLoaderData<typeof loader>();
+  const { isPro, justUpgraded, pricingUrl } = useLoaderData<typeof loader>();
 
-  // Full iframe page navigation — NOT a Remix fetch.
-  // The exit-iframe page loads App Bridge then calls window.open(url, "_top").
+  // Called synchronously inside the click handler — user-gesture activation
+  // is still live, so the browser allows the top-level frame navigation.
   const goToPricingPage = () => {
-    window.location.href = upgradeUrl;
+    window.open(pricingUrl, "_top");
   };
 
   return (
