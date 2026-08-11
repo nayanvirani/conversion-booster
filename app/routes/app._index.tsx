@@ -29,46 +29,28 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect(`/app/billing?${params}`);
   }
 
-  // Same two-path strategy as the billing page.
-  // Dev stores: billing APIs are broken — use SQLite written by billing page.
-  // Production stores: activeSubscriptions is the source of truth.
+  // activeSubscriptions is the source of truth on every load.
+  // Write the result to SQLite so it stays current (never read stale cache).
   try {
     const response = await admin.graphql(`
       #graphql
       query GetPlanStatus {
         currentAppInstallation {
-          activeSubscriptions {
-            id
-            status
-          }
-        }
-        shop {
-          plan {
-            partnerDevelopment
-          }
+          activeSubscriptions { id status }
         }
       }
     `);
     const data = await response.json();
     const subs: Array<{ id: string; status: string }> =
       data.data?.currentAppInstallation?.activeSubscriptions ?? [];
-    const isDevStore: boolean =
-      data.data?.shop?.plan?.partnerDevelopment ?? false;
 
-    let isPro: boolean;
-
-    if (isDevStore) {
-      // Dev store: trust SQLite set by billing page from plan_handle redirects.
-      const storedPlan = await getShopPlan(session.shop);
-      isPro = (storedPlan?.toLowerCase() ?? "free") === "pro";
-    } else {
-      // Production: billing API is authoritative.
-      isPro = subs.some((s) => ["ACTIVE", "TRIALING"].includes(s.status));
-      setShopPlan(session.shop, isPro ? "pro" : "free");
-    }
+    const isPro = subs.some((s) => ["ACTIVE", "TRIALING"].includes(s.status));
+    // Keep SQLite in sync so billing page fallback is always fresh.
+    await setShopPlan(session.shop, isPro ? "pro" : "free");
 
     return json({ isPro });
   } catch {
+    // API failed — fall back to last known cached value.
     const storedPlan = await getShopPlan(session.shop);
     return json({ isPro: storedPlan?.toLowerCase() === "pro" });
   }

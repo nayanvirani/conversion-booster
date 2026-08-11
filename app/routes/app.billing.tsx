@@ -1,6 +1,6 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { Form, useLoaderData } from "@remix-run/react";
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
 import {
   Badge,
   Banner,
@@ -17,26 +17,17 @@ import {
 import { authenticate } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 
-// Plan status strategy:
+// Plan status strategy — single source of truth: Shopify's activeSubscriptions API.
 //
-// DEV stores (partnerDevelopment=true):
-//   Both billing.check() and activeSubscriptions are broken on dev stores —
-//   billing.check() returns true even when Shopify's pricing page shows Free.
-//   Only reliable signal: plan_handle from Shopify's own redirect + SQLite cache.
+// On every page load:
+//   1. Call activeSubscriptions — ACTIVE or TRIALING = Pro.
+//   2. plan_handle=free from Shopify's redirect is an explicit downgrade signal
+//      (handles billing-period lag on production stores).
+//   3. Write the result back to SQLite so the home page can read it without
+//      an extra GraphQL round-trip. SQLite is a write-through cache, never
+//      the authoritative source.
 //
-// PRODUCTION stores:
-//   activeSubscriptions is the source of truth. URL param never grants Pro.
-//   plan_handle=free overrides (safe downgrade override for billing-period lag).
-
-// POST action: called when merchant clicks "Plan not showing correctly? Click to sync".
-// Resets the stored plan to "free" and reloads the billing page.
-// On reload the loader reads SQLite (now "free") and shows Free correctly.
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
-  await setShopPlan(session.shop, "free");
-  console.log(`[billing/action] Cleared stale plan for ${session.shop} → free`);
-  return redirect("/app/billing");
-};
+// If the API call fails: fall back to the cached SQLite value.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -44,14 +35,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const planHandleParam = url.searchParams.get("plan_handle");
   const justChangedPlan = planHandleParam !== null;
-
-  // ?reset=1 is a dev-store escape hatch: forces plan to "free" immediately.
-  // Safe on dev stores (plan_handle is the source of truth there anyway).
-  if (url.searchParams.get("reset") === "1") {
-    await setShopPlan(session.shop, "free");
-    console.log(`[billing/loader] ?reset=1 — cleared plan for ${session.shop}`);
-    return redirect("/app/billing");
-  }
 
   const shopName = session.shop.replace(".myshopify.com", "");
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
@@ -64,43 +47,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         currentAppInstallation {
           activeSubscriptions { id status }
         }
-        shop {
-          plan { partnerDevelopment }
-        }
       }
     `);
     const data = await response.json();
     const subs: Array<{ id: string; status: string }> =
       data.data?.currentAppInstallation?.activeSubscriptions ?? [];
-    const isDevStore: boolean =
-      data.data?.shop?.plan?.partnerDevelopment ?? false;
 
-    let isPro: boolean;
+    // API is the source of truth.
+    // ACTIVE or TRIALING subscription = Pro.
+    const isProFromAPI = subs.some((s) =>
+      ["ACTIVE", "TRIALING"].includes(s.status)
+    );
 
-    if (isDevStore) {
-      // DEV STORE: Shopify billing APIs are unreliable — trust plan_handle + SQLite.
-      if (planHandleParam) {
-        await setShopPlan(session.shop, planHandleParam);
-      }
-      const storedPlan = await getShopPlan(session.shop);
-      // Default to "free" when nothing stored yet (fresh install).
-      isPro = (storedPlan?.toLowerCase() ?? "free") === "pro";
-    } else {
-      // PRODUCTION STORE: activeSubscriptions is the source of truth.
-      const isProFromAPI = subs.some((s) =>
-        ["ACTIVE", "TRIALING"].includes(s.status)
-      );
-      isPro = planHandleParam === "free" ? false : isProFromAPI;
-      setShopPlan(session.shop, isPro ? "pro" : "free");
-    }
+    // plan_handle=free from Shopify's redirect is a reliable explicit downgrade
+    // signal — honour it even if the API still shows an active subscription
+    // (billing period lag). plan_handle=pro is NOT sufficient to grant Pro;
+    // the API must confirm.
+    const isPro = planHandleParam === "free" ? false : isProFromAPI;
+
+    // Always write the current truth back to SQLite so the home page
+    // loader can use it without an extra API call.
+    await setShopPlan(session.shop, isPro ? "pro" : "free");
 
     console.log(
-      `[billing] isDevStore=${isDevStore} plan_handle="${planHandleParam}" subs=${subs.length} → isPro=${isPro}`
+      `[billing] subs=${subs.length} plan_handle="${planHandleParam}" → isPro=${isPro} (stored)`
     );
 
     return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
-    console.error("[billing] GraphQL failed:", err);
+    // API failed — fall back to the last known value from SQLite.
+    console.error("[billing] GraphQL failed, using cached plan:", err);
     const storedPlan = await getShopPlan(session.shop);
     const isPro = storedPlan?.toLowerCase() === "pro";
     return json({ isPro, justChangedPlan, pricingUrl });
@@ -184,17 +160,6 @@ export default function BillingPage() {
               )}
             </BlockStack>
           </Card>
-        </Layout.Section>
-
-        {/* Plan status out of sync? Force a re-sync via the pricing page */}
-        <Layout.Section>
-          <InlineStack align="center">
-            <Form method="post">
-              <Button variant="plain" submit tone="critical">
-                Plan not showing correctly? Click to sync
-              </Button>
-            </Form>
-          </InlineStack>
         </Layout.Section>
       </Layout>
     </Page>
