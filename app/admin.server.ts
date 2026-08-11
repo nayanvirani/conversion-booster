@@ -9,6 +9,7 @@ export type ShopRow = {
   scope: string | null;
   accessToken: string | null;
   refreshToken: string | null;
+  refreshTokenExpires: number | null;
 };
 
 export type EnrichedShop = ShopRow & {
@@ -29,7 +30,7 @@ export function getShops(): Promise<ShopRow[]> {
       if (err) return reject(new Error(`Cannot open DB at ${dbPath}: ${err.message}`));
     });
     db.all(
-      `SELECT id, shop, isOnline, expires, scope, accessToken, refreshToken
+      `SELECT id, shop, isOnline, expires, scope, accessToken, refreshToken, refreshTokenExpires
        FROM shopify_sessions
        WHERE isOnline = 0
        ORDER BY shop ASC`,
@@ -184,6 +185,49 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null
   return Promise.race([promise, timeout]);
 }
 
+// ─── Token refresh ───────────────────────────────────────────────────────────
+
+type RefreshResult =
+  | { ok: true; accessToken: string; expires: number; refreshToken: string; refreshTokenExpires: number }
+  | { ok: false; error: string };
+
+async function refreshAccessToken(shop: string, refreshToken: string): Promise<RefreshResult> {
+  const apiKey    = process.env.SHOPIFY_API_KEY;
+  const apiSecret = process.env.SHOPIFY_API_SECRET;
+  if (!apiKey || !apiSecret) return { ok: false, error: "Missing API credentials" };
+
+  try {
+    const res = await withTimeout(
+      fetch(`https://${shop}/admin/oauth/token`, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: apiKey,
+          client_secret: apiSecret,
+          grant_type: "refresh_token",
+          refresh_token: refreshToken,
+        }).toString(),
+      }),
+      8000
+    );
+    if (!res || !res.ok) return { ok: false, error: `HTTP ${res?.status ?? "timeout"}` };
+    const data: any = await res.json();
+    if (!data.access_token) return { ok: false, error: "No access_token in response" };
+    const now = Math.floor(Date.now() / 1000);
+    return {
+      ok: true,
+      accessToken:         data.access_token,
+      expires:             now + (data.expires_in ?? 86399),
+      refreshToken:        data.refresh_token ?? refreshToken,
+      refreshTokenExpires: now + (data.refresh_token_expires_in ?? 7776000),
+    };
+  } catch (e: any) {
+    return { ok: false, error: e.message };
+  }
+}
+
+// ─── Shop & billing data ─────────────────────────────────────────────────────
+
 async function fetchShopInfo(
   shop: string,
   accessToken: string
@@ -256,9 +300,24 @@ export async function getEnrichedShops(): Promise<EnrichedShop[]> {
         };
       }
 
+      // Auto-refresh the access token if it has expired.
+      let accessToken = shop.accessToken;
+      const now = Math.floor(Date.now() / 1000);
+      if (shop.expires && shop.expires < now && shop.refreshToken) {
+        console.log(`[admin] token expired for ${shop.shop}, refreshing…`);
+        const refreshed = await refreshAccessToken(shop.shop, shop.refreshToken);
+        if (refreshed.ok) {
+          await updateSession(shop.id, refreshed);
+          accessToken = refreshed.accessToken;
+          console.log(`[admin] token refreshed for ${shop.shop}`);
+        } else {
+          console.warn(`[admin] token refresh failed for ${shop.shop}:`, refreshed.error);
+        }
+      }
+
       const [info, billing] = await Promise.all([
-        fetchShopInfo(shop.shop, shop.accessToken),
-        fetchBillingStatus(shop.shop, shop.accessToken),
+        fetchShopInfo(shop.shop, accessToken),
+        fetchBillingStatus(shop.shop, accessToken),
       ]);
 
       return {
