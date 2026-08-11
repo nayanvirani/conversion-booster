@@ -1,6 +1,6 @@
-import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
+import { Form, useLoaderData } from "@remix-run/react";
 import {
   Badge,
   Banner,
@@ -17,23 +17,26 @@ import {
 import { authenticate } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 
-// Plan status strategy — two code paths based on store type:
+// Plan status strategy:
 //
-// PRODUCTION stores (real merchants):
-//   currentAppInstallation.activeSubscriptions is the source of truth.
-//   Empty = Free. ACTIVE/TRIALING = Pro.
-//   A fake ?plan_handle=pro gains nothing — API has no subscription for them.
-//   plan_handle=free overrides (safe: can only downgrade, handles billing-period lag).
-//
-// DEV / partner-development stores:
-//   Shopify's billing APIs are unreliable:
-//     - activeSubscriptions always returns [] regardless of plan
-//     - billing.check() returns hasActivePayment=true even after switching to Free
-//       (confirmed: Shopify pricing UI shows "FREE" but billing.check() says Pro)
+// DEV stores (partnerDevelopment=true):
+//   Both billing.check() and activeSubscriptions are broken on dev stores —
+//   billing.check() returns true even when Shopify's pricing page shows Free.
 //   Only reliable signal: plan_handle from Shopify's own redirect + SQLite cache.
-//   Security: dev stores are accessible only by the store owner (Shopify auth).
-//   There is no meaningful security risk from a store owner faking a URL on their
-//   own dev store — and on production stores we use the API, not the URL.
+//
+// PRODUCTION stores:
+//   activeSubscriptions is the source of truth. URL param never grants Pro.
+//   plan_handle=free overrides (safe downgrade override for billing-period lag).
+
+// POST action: called when merchant clicks "Plan not showing correctly? Click to sync".
+// Resets the stored plan to "free" and reloads the billing page.
+// On reload the loader reads SQLite (now "free") and shows Free correctly.
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { session } = await authenticate.admin(request);
+  await setShopPlan(session.shop, "free");
+  console.log(`[billing/action] Cleared stale plan for ${session.shop} → free`);
+  return redirect("/app/billing");
+};
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -47,20 +50,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
 
   try {
-    // Single query: subscription status + store type.
     const response = await admin.graphql(`
       #graphql
       query GetPlanStatus {
         currentAppInstallation {
-          activeSubscriptions {
-            id
-            status
-          }
+          activeSubscriptions { id status }
         }
         shop {
-          plan {
-            partnerDevelopment
-          }
+          plan { partnerDevelopment }
         }
       }
     `);
@@ -73,16 +70,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     let isPro: boolean;
 
     if (isDevStore) {
-      // DEV STORE: billing APIs are unreliable — trust plan_handle + SQLite only.
+      // DEV STORE: Shopify billing APIs are unreliable — trust plan_handle + SQLite.
       if (planHandleParam) {
         await setShopPlan(session.shop, planHandleParam);
       }
       const storedPlan = await getShopPlan(session.shop);
+      // Default to "free" when nothing stored yet (fresh install).
       isPro = (storedPlan?.toLowerCase() ?? "free") === "pro";
     } else {
-      // PRODUCTION STORE: billing API is authoritative.
-      // plan_handle=pro is ignored (API must confirm). plan_handle=free is trusted
-      // immediately (safe override — can only downgrade, handles billing-period lag).
+      // PRODUCTION STORE: activeSubscriptions is the source of truth.
       const isProFromAPI = subs.some((s) =>
         ["ACTIVE", "TRIALING"].includes(s.status)
       );
@@ -97,7 +93,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
     console.error("[billing] GraphQL failed:", err);
-    // Safe fallback — read last known value from SQLite.
     const storedPlan = await getShopPlan(session.shop);
     const isPro = storedPlan?.toLowerCase() === "pro";
     return json({ isPro, justChangedPlan, pricingUrl });
@@ -181,6 +176,17 @@ export default function BillingPage() {
               )}
             </BlockStack>
           </Card>
+        </Layout.Section>
+
+        {/* Plan status out of sync? Force a re-sync via the pricing page */}
+        <Layout.Section>
+          <InlineStack align="center">
+            <Form method="post">
+              <Button variant="plain" submit tone="critical">
+                Plan not showing correctly? Click to sync
+              </Button>
+            </Form>
+          </InlineStack>
         </Layout.Section>
       </Layout>
     </Page>
