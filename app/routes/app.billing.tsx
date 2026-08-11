@@ -75,29 +75,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     let isPro: boolean;
 
     if (planHandleParam === "free") {
-      // Explicit downgrade from Shopify's pricing page redirect.
       isPro = false;
     } else if (planHandleParam && planHandleParam.toLowerCase() === "pro") {
-      // Shopify just redirected after Pro selection.
-      // On dev stores trust it immediately (API may lag after test subscription creation).
-      // On production stores: only accept if the API also confirms it.
       isPro = isDevStore ? true : isProFromAPI;
     } else {
-      // No plan_handle in URL → trust the live API directly.
-      // Empty activeSubscriptions means Free (not an API lag) — the lag is
-      // already handled by plan_handle=pro on the initial upgrade redirect.
       isPro = isProFromAPI;
     }
 
     await setShopPlan(session.shop, isPro ? "pro" : "free");
-    // Sync metafield so Liquid theme extensions gate Pro-only widgets correctly.
     await updatePlanMetafield(admin, appInstallationId, isPro);
 
+    // Detailed debug log — visible in Railway logs.
     console.log(
-      `[billing] dev=${isDevStore} subs=${subs.length} plan_handle="${planHandleParam}" → isPro=${isPro}`
+      `[billing] shop=${session.shop} dev=${isDevStore} plan_handle="${planHandleParam}" subs=${JSON.stringify(subs)} isProFromAPI=${isProFromAPI} → isPro=${isPro}`
     );
 
-    return json({ isPro, justChangedPlan, pricingUrl });
+    return json({ isPro, justChangedPlan, pricingUrl, debug: { subs, isDevStore, planHandleParam, isProFromAPI, isPro } });
   } catch (err) {
     console.error("[billing] GraphQL failed, using cached plan:", err);
     const storedPlan = await getShopPlan(session.shop);
@@ -110,7 +103,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function BillingPage() {
-  const { isPro, justChangedPlan, pricingUrl } = useLoaderData<typeof loader>();
+  const { isPro, justChangedPlan, pricingUrl, debug } = useLoaderData<typeof loader>();
 
   const goToPricingPage = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -188,6 +181,22 @@ export default function BillingPage() {
           </Card>
         </Layout.Section>
       </Layout>
+
+      {/* ── Debug card — remove once the billing issue is resolved ── */}
+      <Card>
+        <BlockStack gap="200">
+          <Text as="h3" variant="headingSm">Debug info (temp)</Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            isDevStore: {String(debug?.isDevStore)} | plan_handle param: &quot;{String(debug?.planHandleParam)}&quot;
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            activeSubscriptions ({debug?.subs?.length ?? 0}): {JSON.stringify(debug?.subs)}
+          </Text>
+          <Text as="p" variant="bodySm" tone="subdued">
+            isProFromAPI: {String(debug?.isProFromAPI)} → final isPro: {String(debug?.isPro)}
+          </Text>
+        </BlockStack>
+      </Card>
     </Page>
   );
 }
