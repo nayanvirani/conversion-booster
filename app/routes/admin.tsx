@@ -188,8 +188,7 @@ export default function Admin() {
         </div>
 
         <p style={{ fontSize: 11, color: "#AAA49C", marginTop: 16, textAlign: "center" }}>
-          Live data is fetched via Shopify Admin API on each page load using the stored access token.
-          Billing status on dev stores shows Free (Shopify restriction).
+          Live data is fetched live from the Shopify Admin API using each shop's stored access token.
         </p>
       </main>
     </div>

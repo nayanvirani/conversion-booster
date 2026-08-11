@@ -14,29 +14,30 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
-import { authenticate, PLANS } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 import { updatePlanMetafield } from "../plan.server";
 
-// Plan detection strategy:
+// ─── Plan detection strategy ────────────────────────────────────────────────
 //
-// PRODUCTION stores  → activeSubscriptions is authoritative (real paid subscriptions
-//                      always appear here). Write to SQLite on every load.
+// activeSubscriptions includes test subscriptions on dev stores, so a single
+// API call works for both store types.  The subtlety is timing: there's a
+// brief lag between the merchant clicking "Test with this plan" and the
+// subscription appearing in the API.  Shopify fires a plan_handle redirect
+// immediately, so we use it as a trust-worthy override.
 //
-// DEV stores         → activeSubscriptions NEVER includes test subscriptions (Shopify
-//                      platform restriction). Two complementary signals instead:
+// Priority order (highest → lowest):
+//   1. plan_handle=free  — explicit downgrade from Shopify's redirect
+//   2. plan_handle=pro   — explicit upgrade; trust on dev stores (API lag),
+//                          and confirmed by API on production
+//   3. activeSubscriptions — live API truth on both store types
+//   4. SQLite cache      — fallback when the API call fails entirely
 //
-//   1. plan_handle from Shopify's redirect (fires after any plan selection).
-//      Writes directly to SQLite. Highest priority.
-//
-//   2. billing.check({ isTest: true }) on every load — designed specifically to
-//      detect test subscriptions. If it says no active payment → Free, even if
-//      SQLite says Pro (handles the stale-Pro case when downgrading).
-//
-//   plan_handle=free from a redirect always wins (explicit downgrade signal).
+// Security: plan_handle=pro is NOT trusted on production stores without API
+// confirmation, so a fake URL param cannot grant Pro access to paying merchants.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, billing, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const planHandleParam = url.searchParams.get("plan_handle");
@@ -67,49 +68,40 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const isDevStore: boolean =
       data.data?.shop?.plan?.partnerDevelopment ?? false;
 
+    const isProFromAPI = subs.some((s) =>
+      ["ACTIVE", "TRIALING"].includes(s.status)
+    );
+
     let isPro: boolean;
 
-    if (isDevStore) {
-      // Step 1: If Shopify just sent a plan_handle redirect, write it immediately.
-      if (planHandleParam) {
-        await setShopPlan(session.shop, planHandleParam.toLowerCase());
-        isPro = planHandleParam.toLowerCase() === "pro";
-        console.log(`[billing] DEV plan_handle="${planHandleParam}" → isPro=${isPro}`);
-      } else {
-        // Step 2: No redirect param — use billing.check({ isTest: true }) to get
-        // the live state. This is the only API that sees test subscriptions.
-        let billingCheckPro = false;
-        try {
-          const check = await billing.check({
-            plans: [PLANS.PRO],
-            isTest: true,
-          });
-          billingCheckPro = check.hasActivePayment;
-          console.log(`[billing] DEV billing.check isTest=true → hasActivePayment=${billingCheckPro}`);
-        } catch (billingErr) {
-          // billing.check unavailable — fall back to SQLite cache.
-          console.warn("[billing] billing.check failed:", billingErr);
-          const storedPlan = await getShopPlan(session.shop);
-          billingCheckPro = (storedPlan ?? "free").toLowerCase() === "pro";
-        }
-        isPro = billingCheckPro;
-        // Keep SQLite in sync with the live check result.
-        await setShopPlan(session.shop, isPro ? "pro" : "free");
-      }
+    if (planHandleParam === "free") {
+      // Explicit downgrade from Shopify's pricing page redirect.
+      isPro = false;
+    } else if (planHandleParam && planHandleParam.toLowerCase() === "pro") {
+      // Shopify just redirected after Pro selection.
+      // On dev stores trust it immediately (API may lag after test subscription creation).
+      // On production stores: only accept if the API also confirms it.
+      isPro = isDevStore ? true : isProFromAPI;
     } else {
-      // Production store: activeSubscriptions is authoritative.
-      const isProFromAPI = subs.some((s) =>
-        ["ACTIVE", "TRIALING"].includes(s.status)
-      );
-      // plan_handle=free is an explicit downgrade signal even during billing-period lag.
-      isPro = planHandleParam === "free" ? false : isProFromAPI;
-      await setShopPlan(session.shop, isPro ? "pro" : "free");
-      console.log(`[billing] PROD subs=${subs.length} plan_handle="${planHandleParam}" → isPro=${isPro}`);
+      // No plan_handle in URL → use the live API.
+      // If the API is empty and we're on a dev store, fall back to the last
+      // known value from SQLite (covers the brief window after upgrade before
+      // the subscription registers in activeSubscriptions).
+      if (subs.length === 0 && isDevStore) {
+        const storedPlan = await getShopPlan(session.shop);
+        isPro = (storedPlan ?? "free").toLowerCase() === "pro";
+      } else {
+        isPro = isProFromAPI;
+      }
     }
 
-    // Write plan to app installation metafield so Liquid theme extensions
-    // can gate Pro-only widgets (sticky-atc, sales-popup) without an API call.
+    await setShopPlan(session.shop, isPro ? "pro" : "free");
+    // Sync metafield so Liquid theme extensions gate Pro-only widgets correctly.
     await updatePlanMetafield(admin, appInstallationId, isPro);
+
+    console.log(
+      `[billing] dev=${isDevStore} subs=${subs.length} plan_handle="${planHandleParam}" → isPro=${isPro}`
+    );
 
     return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {

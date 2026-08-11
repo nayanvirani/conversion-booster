@@ -14,12 +14,12 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
-import { authenticate, PLANS } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 import { updatePlanMetafield } from "../plan.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, billing, session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
 
   // Shopify App Pricing redirects after plan selection with ?plan_handle=<handle>.
   // Forward to the billing page where the subscription is verified via GraphQL
@@ -30,10 +30,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect(`/app/billing?${params}`);
   }
 
-  // Mirror the billing page strategy:
-  // - Dev stores: activeSubscriptions never includes test subscriptions → read SQLite
-  //   (written by the billing page when plan_handle arrives from Shopify's redirect)
-  // - Production stores: activeSubscriptions is authoritative → write to SQLite
+  // activeSubscriptions works for both dev and production stores.
+  // SQLite fallback is used only when the API call fails entirely.
   try {
     const response = await admin.graphql(`
       #graphql
@@ -55,24 +53,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const isDevStore: boolean =
       data.data?.shop?.plan?.partnerDevelopment ?? false;
 
+    const isProFromAPI = subs.some((s) =>
+      ["ACTIVE", "TRIALING"].includes(s.status)
+    );
+
+    // On dev stores: if the API returns empty, fall back to SQLite written
+    // by the billing page. This covers the brief lag window after upgrade
+    // before the test subscription registers in activeSubscriptions.
     let isPro: boolean;
-    if (isDevStore) {
-      // Dev store: activeSubscriptions never includes test subscriptions.
-      // Use billing.check({ isTest: true }) — designed for test subscriptions.
-      try {
-        const check = await billing.check({ plans: [PLANS.PRO], isTest: true });
-        isPro = check.hasActivePayment;
-      } catch {
-        // Fall back to cached SQLite if billing.check unavailable.
-        const storedPlan = await getShopPlan(session.shop);
-        isPro = (storedPlan ?? "free").toLowerCase() === "pro";
-      }
-      await setShopPlan(session.shop, isPro ? "pro" : "free");
+    if (subs.length === 0 && isDevStore) {
+      const storedPlan = await getShopPlan(session.shop);
+      isPro = (storedPlan ?? "free").toLowerCase() === "pro";
     } else {
-      isPro = subs.some((s) => ["ACTIVE", "TRIALING"].includes(s.status));
-      await setShopPlan(session.shop, isPro ? "pro" : "free");
+      isPro = isProFromAPI;
     }
 
+    await setShopPlan(session.shop, isPro ? "pro" : "free");
     // Fire-and-forget — keep theme metafield in sync without blocking the page.
     updatePlanMetafield(admin, appInstallationId, isPro).catch(() => {});
 
