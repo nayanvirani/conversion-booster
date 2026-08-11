@@ -72,25 +72,48 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ["ACTIVE", "TRIALING"].includes(s.status)
     );
 
+    const planHandleLower = (planHandleParam ?? "").toLowerCase();
     let isPro: boolean;
 
-    if (planHandleParam === "free") {
+    if (planHandleLower === "free") {
+      // Merchant selected the Free plan. Force Free and explicitly cancel any
+      // active subscription — on dev stores Shopify does NOT auto-cancel test
+      // subscriptions when the merchant clicks "Free", so activeSubscriptions
+      // would keep returning ACTIVE on the next page load without this step.
       isPro = false;
-    } else if (planHandleParam && planHandleParam.toLowerCase() === "pro") {
+      if (subs.length > 0) {
+        console.log(`[billing] cancelling ${subs.length} subscription(s) for ${session.shop}`);
+        await Promise.allSettled(
+          subs.map((sub) =>
+            admin.graphql(
+              `#graphql
+               mutation CancelSub($id: ID!) {
+                 appSubscriptionCancel(id: $id) {
+                   userErrors { field message }
+                 }
+               }`,
+              { variables: { id: sub.id } }
+            )
+          )
+        );
+      }
+    } else if (planHandleLower === "pro") {
+      // On dev stores trust immediately (API may lag after test subscription).
+      // On production stores verify with the live API before granting Pro.
       isPro = isDevStore ? true : isProFromAPI;
     } else {
+      // No plan_handle (regular page load) — use live API as single source of truth.
       isPro = isProFromAPI;
     }
 
     await setShopPlan(session.shop, isPro ? "pro" : "free");
     await updatePlanMetafield(admin, appInstallationId, isPro);
 
-    // Detailed debug log — visible in Railway logs.
     console.log(
-      `[billing] shop=${session.shop} dev=${isDevStore} plan_handle="${planHandleParam}" subs=${JSON.stringify(subs)} isProFromAPI=${isProFromAPI} → isPro=${isPro}`
+      `[billing] shop=${session.shop} dev=${isDevStore} plan_handle="${planHandleParam}" subs=${JSON.stringify(subs)} → isPro=${isPro}`
     );
 
-    return json({ isPro, justChangedPlan, pricingUrl, debug: { subs, isDevStore, planHandleParam, isProFromAPI, isPro } });
+    return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
     console.error("[billing] GraphQL failed, using cached plan:", err);
     const storedPlan = await getShopPlan(session.shop);
@@ -103,7 +126,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function BillingPage() {
-  const { isPro, justChangedPlan, pricingUrl, debug } = useLoaderData<typeof loader>();
+  const { isPro, justChangedPlan, pricingUrl } = useLoaderData<typeof loader>();
 
   const goToPricingPage = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -181,22 +204,6 @@ export default function BillingPage() {
           </Card>
         </Layout.Section>
       </Layout>
-
-      {/* ── Debug card — remove once the billing issue is resolved ── */}
-      <Card>
-        <BlockStack gap="200">
-          <Text as="h3" variant="headingSm">Debug info (temp)</Text>
-          <Text as="p" variant="bodySm" tone="subdued">
-            isDevStore: {String(debug?.isDevStore)} | plan_handle param: &quot;{String(debug?.planHandleParam)}&quot;
-          </Text>
-          <Text as="p" variant="bodySm" tone="subdued">
-            activeSubscriptions ({debug?.subs?.length ?? 0}): {JSON.stringify(debug?.subs)}
-          </Text>
-          <Text as="p" variant="bodySm" tone="subdued">
-            isProFromAPI: {String(debug?.isProFromAPI)} → final isPro: {String(debug?.isPro)}
-          </Text>
-        </BlockStack>
-      </Card>
     </Page>
   );
 }

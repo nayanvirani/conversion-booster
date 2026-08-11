@@ -14,7 +14,7 @@ api_version = "2025-10"
 
   [[webhooks.subscriptions]]
   uri = "/webhooks"
-  topics = [ "app/uninstalled" ]
+  topics = [ "app/uninstalled", "app_subscriptions/update" ]
 
   [webhooks.privacy_compliance]
   customer_deletion_url = "https://conversion-booster-production.up.railway.app/webhooks"
