@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { json } from "@remix-run/node";
+import { json, redirect } from "@remix-run/node";
 import { useLoaderData } from "@remix-run/react";
 import {
   Badge,
@@ -14,10 +14,22 @@ import {
   Page,
   Text,
 } from "@shopify/polaris";
-import { authenticate, PLANS } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { billing } = await authenticate.admin(request);
+
+  // Shopify App Pricing redirects to the app after plan selection with
+  // ?plan_handle=<handle> (and sometimes ?charge_id=<id>). These may land on
+  // the home page if the per-plan "Welcome link" in Partner Dashboard is blank
+  // or set to the app root. Forward them to the billing page so the user sees
+  // a proper confirmation and the plan status is persisted.
+  const url = new URL(request.url);
+  if (url.searchParams.has("plan_handle")) {
+    const params = url.searchParams.toString();
+    return redirect(`/app/billing?${params}`);
+  }
+
   try {
     const { hasActivePayment } = await billing.check({ isTest: false });
     return json({ isPro: hasActivePayment });
