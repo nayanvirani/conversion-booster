@@ -83,16 +83,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       // On production stores: only accept if the API also confirms it.
       isPro = isDevStore ? true : isProFromAPI;
     } else {
-      // No plan_handle in URL → use the live API.
-      // If the API is empty and we're on a dev store, fall back to the last
-      // known value from SQLite (covers the brief window after upgrade before
-      // the subscription registers in activeSubscriptions).
-      if (subs.length === 0 && isDevStore) {
-        const storedPlan = await getShopPlan(session.shop);
-        isPro = (storedPlan ?? "free").toLowerCase() === "pro";
-      } else {
-        isPro = isProFromAPI;
-      }
+      // No plan_handle in URL → trust the live API directly.
+      // Empty activeSubscriptions means Free (not an API lag) — the lag is
+      // already handled by plan_handle=pro on the initial upgrade redirect.
+      isPro = isProFromAPI;
     }
 
     await setShopPlan(session.shop, isPro ? "pro" : "free");

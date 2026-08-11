@@ -15,7 +15,7 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { getShopPlan, setShopPlan } from "../db.server";
+import { setShopPlan } from "../db.server";
 import { updatePlanMetafield } from "../plan.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -57,16 +57,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ["ACTIVE", "TRIALING"].includes(s.status)
     );
 
-    // On dev stores: if the API returns empty, fall back to SQLite written
-    // by the billing page. This covers the brief lag window after upgrade
-    // before the test subscription registers in activeSubscriptions.
-    let isPro: boolean;
-    if (subs.length === 0 && isDevStore) {
-      const storedPlan = await getShopPlan(session.shop);
-      isPro = (storedPlan ?? "free").toLowerCase() === "pro";
-    } else {
-      isPro = isProFromAPI;
-    }
+    // Trust the live API directly — empty activeSubscriptions means Free.
+    // The brief lag after upgrade is handled by the plan_handle=pro redirect
+    // that Shopify sends immediately after "Test with this plan" is clicked.
+    const isPro = isProFromAPI;
 
     await setShopPlan(session.shop, isPro ? "pro" : "free");
     // Fire-and-forget — keep theme metafield in sync without blocking the page.
