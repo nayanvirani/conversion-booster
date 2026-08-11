@@ -15,63 +15,51 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { setShopPlan } from "../db.server";
+import { getShopPlan, setShopPlan } from "../db.server";
 
 // Shopify App Pricing (Managed Pricing) — billing.request() is blocked.
 //
 // Navigation to the pricing page uses window.shopify.redirectTo(url) — the
 // App Bridge v4 postMessage API for top-frame navigation.
 //
-// After plan selection, Shopify redirects to the per-plan "Welcome link" with
-// ?plan_handle=<handle>. The home page loader forwards all such visits here so
-// plan changes are always handled in one place.
+// After plan selection, Shopify redirects with ?plan_handle=<handle>.
+// The home page loader forwards all such visits here so plan changes are
+// handled in one place and the plan_handle is always persisted to SQLite.
 //
-// billing.check() is the authoritative source for subscription status. It reads
-// the live state from Shopify and works for Managed Pricing without needing any
-// billing config in shopify.server.ts.
-//
-// When plan_handle=free arrives (user downgraded), we override billing.check()
-// because Shopify may keep the subscription technically "active" until the
-// billing period ends — but the user's intent is Free from this point.
+// We use the persisted plan_handle (SQLite) as the single source of truth.
+// billing.check() / activeSubscriptions are NOT used because:
+//   - billing.check() keeps returning hasActivePayment=true until the billing
+//     period ends even after the merchant switches to Free.
+//   - activeSubscriptions filters by plan name which may not match exactly.
+// The plan_handle Shopify sends is immediate, accurate, and plan-agnostic.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { billing, session } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const planHandleParam = url.searchParams.get("plan_handle");
   const justUpgraded = planHandleParam !== null;
 
-  // Persist the plan_handle so other parts of the app can reference it.
+  // When Shopify redirects back after plan selection, persist the plan_handle.
+  // This is the only reliable signal of which plan the merchant is now on.
   if (planHandleParam) {
     await setShopPlan(session.shop, planHandleParam);
-    console.log(`[billing] plan_handle="${planHandleParam}" for ${session.shop}`);
+    console.log(`[billing] Stored plan_handle="${planHandleParam}" for ${session.shop}`);
   }
+
+  // Read the stored plan. If no record exists yet (fresh install before any
+  // plan selection), the merchant is on the Free plan by default.
+  const storedPlan = await getShopPlan(session.shop);
+  const isPro = storedPlan?.toLowerCase() === "pro";
+
+  console.log(`[billing] isPro=${isPro} (storedPlan="${storedPlan}", plan_handle="${planHandleParam}")`);
 
   // Build the pricing URL server-side.
   const shopName = session.shop.replace(".myshopify.com", "");
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
 
-  try {
-    // billing.check() reads the live subscription state from Shopify.
-    const { hasActivePayment } = await billing.check({ isTest: false });
-
-    // plan_handle=free overrides billing.check() — Shopify may not immediately
-    // cancel the subscription (it could stay active until billing period ends),
-    // but we respect the merchant's explicit choice to move to Free.
-    const isPro = planHandleParam === "free"
-      ? false
-      : (planHandleParam === "pro" || hasActivePayment);
-
-    console.log(`[billing] isPro=${isPro} (billingCheck=${hasActivePayment}, plan_handle="${planHandleParam}")`);
-
-    return json({ isPro, justUpgraded, pricingUrl });
-  } catch (err) {
-    console.error("[billing] billing.check() failed:", err);
-    // Fallback: trust plan_handle if present, otherwise assume free.
-    const isPro = planHandleParam === "pro";
-    return json({ isPro, justUpgraded, pricingUrl });
-  }
+  return json({ isPro, justUpgraded, pricingUrl });
 };
 
 export default function BillingPage() {
@@ -87,7 +75,6 @@ export default function BillingPage() {
     if (shopify?.redirectTo) {
       shopify.redirectTo(pricingUrl);
     } else {
-      // Fallback for non-embedded / testing contexts
       window.open(pricingUrl, "_top");
     }
   };

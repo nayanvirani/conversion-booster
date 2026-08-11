@@ -15,27 +15,28 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
+import { getShopPlan } from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { billing } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
 
-  // Shopify App Pricing redirects to the app after plan selection with
-  // ?plan_handle=<handle> (and sometimes ?charge_id=<id>). These may land on
-  // the home page if the per-plan "Welcome link" in Partner Dashboard is blank
-  // or set to the app root. Forward them to the billing page so the user sees
-  // a proper confirmation and the plan status is persisted.
+  // Shopify App Pricing redirects after plan selection with ?plan_handle=<handle>.
+  // These may land here (home) if the per-plan "Welcome link" in Partner Dashboard
+  // is blank or set to the app root. Forward to the billing page so the plan_handle
+  // is persisted and the merchant sees a proper confirmation.
   const url = new URL(request.url);
   if (url.searchParams.has("plan_handle")) {
     const params = url.searchParams.toString();
     return redirect(`/app/billing?${params}`);
   }
 
-  try {
-    const { hasActivePayment } = await billing.check({ isTest: false });
-    return json({ isPro: hasActivePayment });
-  } catch {
-    return json({ isPro: false });
-  }
+  // Use the persisted plan_handle as the single source of truth.
+  // billing.check() keeps returning Pro until the billing period ends even after
+  // the merchant switches to Free — plan_handle from Shopify is immediate and accurate.
+  const storedPlan = await getShopPlan(session.shop);
+  const isPro = storedPlan?.toLowerCase() === "pro";
+
+  return json({ isPro });
 };
 
 const WIDGETS = [
