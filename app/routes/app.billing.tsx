@@ -17,17 +17,18 @@ import {
 import { authenticate } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 
-// Plan status strategy — single source of truth: Shopify's activeSubscriptions API.
+// Plan detection strategy:
 //
-// On every page load:
-//   1. Call activeSubscriptions — ACTIVE or TRIALING = Pro.
-//   2. plan_handle=free from Shopify's redirect is an explicit downgrade signal
-//      (handles billing-period lag on production stores).
-//   3. Write the result back to SQLite so the home page can read it without
-//      an extra GraphQL round-trip. SQLite is a write-through cache, never
-//      the authoritative source.
+// PRODUCTION stores  → activeSubscriptions is authoritative. Write to SQLite on
+//                      every load so home page has a fresh cached value.
 //
-// If the API call fails: fall back to the cached SQLite value.
+// DEV stores         → Shopify never includes test subscriptions in
+//                      activeSubscriptions, so the API always returns [].
+//                      The only reliable signal is plan_handle from Shopify's
+//                      own post-selection redirect. We write that to SQLite and
+//                      read it on subsequent loads.
+//
+// In both cases plan_handle=free is honoured as an explicit downgrade signal.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -47,39 +48,52 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         currentAppInstallation {
           activeSubscriptions { id status }
         }
+        shop {
+          plan { partnerDevelopment }
+        }
       }
     `);
     const data = await response.json();
     const subs: Array<{ id: string; status: string }> =
       data.data?.currentAppInstallation?.activeSubscriptions ?? [];
+    const isDevStore: boolean =
+      data.data?.shop?.plan?.partnerDevelopment ?? false;
 
-    // API is the source of truth.
-    // ACTIVE or TRIALING subscription = Pro.
-    const isProFromAPI = subs.some((s) =>
-      ["ACTIVE", "TRIALING"].includes(s.status)
-    );
+    let isPro: boolean;
 
-    // plan_handle=free from Shopify's redirect is a reliable explicit downgrade
-    // signal — honour it even if the API still shows an active subscription
-    // (billing period lag). plan_handle=pro is NOT sufficient to grant Pro;
-    // the API must confirm.
-    const isPro = planHandleParam === "free" ? false : isProFromAPI;
-
-    // Always write the current truth back to SQLite so the home page
-    // loader can use it without an extra API call.
-    await setShopPlan(session.shop, isPro ? "pro" : "free");
+    if (isDevStore) {
+      // Dev store: activeSubscriptions never includes test subscriptions.
+      // Trust plan_handle from Shopify's redirect → write to SQLite.
+      // Subsequent loads (no plan_handle) read SQLite; default to "free".
+      if (planHandleParam) {
+        await setShopPlan(session.shop, planHandleParam.toLowerCase());
+      }
+      const storedPlan = await getShopPlan(session.shop);
+      isPro = (storedPlan ?? "free").toLowerCase() === "pro";
+    } else {
+      // Production store: activeSubscriptions is the source of truth.
+      const isProFromAPI = subs.some((s) =>
+        ["ACTIVE", "TRIALING"].includes(s.status)
+      );
+      // plan_handle=free is a reliable explicit downgrade signal even if
+      // the billing period hasn't ended yet.
+      isPro = planHandleParam === "free" ? false : isProFromAPI;
+      await setShopPlan(session.shop, isPro ? "pro" : "free");
+    }
 
     console.log(
-      `[billing] subs=${subs.length} plan_handle="${planHandleParam}" → isPro=${isPro} (stored)`
+      `[billing] isDevStore=${isDevStore} plan_handle="${planHandleParam}" subs=${subs.length} → isPro=${isPro}`
     );
 
     return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
-    // API failed — fall back to the last known value from SQLite.
     console.error("[billing] GraphQL failed, using cached plan:", err);
     const storedPlan = await getShopPlan(session.shop);
-    const isPro = storedPlan?.toLowerCase() === "pro";
-    return json({ isPro, justChangedPlan, pricingUrl });
+    return json({
+      isPro: (storedPlan ?? "free").toLowerCase() === "pro",
+      justChangedPlan,
+      pricingUrl,
+    });
   }
 };
 
