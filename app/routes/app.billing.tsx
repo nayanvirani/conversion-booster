@@ -35,17 +35,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const justUpgraded = url.searchParams.has("charge_id");
 
-  // Build the pricing URL server-side (needs session + env vars).
+  // Build the pricing URL server-side.
   const shopName = session.shop.replace(".myshopify.com", "");
-  const apiKey = process.env.SHOPIFY_API_KEY || "";
 
-  // After plan selection, Shopify redirects to return_url (must be a Shopify admin
-  // URL — external URLs like Railway are rejected). The admin URL keeps the merchant
-  // in the embedded app. The app handle "conversion-booster-11" is the Shopify admin
-  // identifier visible in: admin.shopify.com/store/{shop}/apps/conversion-booster-11
+  // Shopify's pricing_plans URL uses the APP HANDLE (e.g. "conversion-booster-11"),
+  // NOT the API key / client ID. Using the client ID causes Shopify to redirect to
+  // settings/apps instead of showing the plan selector.
+  //
+  // The handle is visible in: admin.shopify.com/store/{shop}/apps/conversion-booster-11
+  // It is the same for every merchant store — it's a global app identifier.
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
+
+  // return_url must be a Shopify admin URL (external URLs like Railway are rejected).
+  // After plan selection, Shopify appends ?charge_id=xxx and redirects here.
   const returnUrl = `https://admin.shopify.com/store/${shopName}/apps/${appHandle}/billing`;
-  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${apiKey}/pricing_plans?return_url=${encodeURIComponent(returnUrl)}`;
+  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans?return_url=${encodeURIComponent(returnUrl)}`;
 
   try {
     const response = await admin.graphql(`
