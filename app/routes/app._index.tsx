@@ -15,7 +15,7 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { setShopPlan } from "../db.server";
+import { setShopPlan, getProGrantedAt } from "../db.server";
 import { updatePlanMetafield } from "../plan.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -57,13 +57,27 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       ["ACTIVE", "TRIALING"].includes(s.status)
     );
 
-    // Trust the live API directly — empty activeSubscriptions means Free.
-    // The brief lag after upgrade is handled by the plan_handle=pro redirect
-    // that Shopify sends immediately after "Test with this plan" is clicked.
-    const isPro = isProFromAPI;
+    // Same logic as the billing page loader (see app.billing.tsx for details).
+    let isPro: boolean;
+    if (!isDevStore) {
+      isPro = isProFromAPI;
+    } else {
+      const PRO_GRANT_TTL_SECONDS = 2 * 60 * 60; // 2 hours
+      const proGrantedAt = await getProGrantedAt(session.shop);
+      const now = Math.floor(Date.now() / 1000);
+      const grantIsFresh =
+        proGrantedAt !== null && now - proGrantedAt < PRO_GRANT_TTL_SECONDS;
+
+      if (isProFromAPI && grantIsFresh) {
+        isPro = true;
+      } else {
+        // Stale or no grant — default to Free.
+        // (Cancelling stale subs is handled by the billing page on next visit.)
+        isPro = false;
+      }
+    }
 
     await setShopPlan(session.shop, isPro ? "pro" : "free");
-    // Fire-and-forget — keep theme metafield in sync without blocking the page.
     updatePlanMetafield(admin, appInstallationId, isPro).catch(() => {});
 
     return json({ isPro });

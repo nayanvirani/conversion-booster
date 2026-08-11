@@ -1,6 +1,6 @@
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { json, redirect } from "@remix-run/node";
-import { Form, useLoaderData } from "@remix-run/react";
+import type { LoaderFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import { useLoaderData } from "@remix-run/react";
 import {
   Badge,
   Banner,
@@ -15,7 +15,7 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { getShopPlan, setShopPlan } from "../db.server";
+import { getShopPlan, setShopPlan, recordProGrant, getProGrantedAt } from "../db.server";
 import { updatePlanMetafield } from "../plan.server";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -58,19 +58,23 @@ async function cancelAllSubscriptions(admin: any, subs: Array<{ id: string }>) {
   );
 }
 
-// ─── Action — "Force sync to Free" button ───────────────────────────────────
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
-  const { subs, appInstallationId } = await getSubscriptionStatus(admin);
-
-  console.log(`[billing/action] force-sync-free for ${session.shop}, cancelling ${subs.length} sub(s)`);
-  await cancelAllSubscriptions(admin, subs);
-  await setShopPlan(session.shop, "free");
-  await updatePlanMetafield(admin, appInstallationId, false);
-
-  return redirect("/app/billing");
-};
+// ─── How plan detection works ────────────────────────────────────────────────
+//
+// Dev stores (partnerDevelopment = true):
+//   Test subscriptions are unreliable — Shopify's pricing page and
+//   activeSubscriptions can show different states after plan switches.
+//
+//   Strategy:
+//   1. plan_handle=pro  → grant Pro immediately; record timestamp in SQLite.
+//   2. plan_handle=free → force Free; cancel any active subscriptions.
+//   3. Regular load     → if a pro grant exists and is < 2 hours old, the
+//                         subscription is fresh (user just upgraded).
+//                         If the grant is older or missing, the subscription
+//                         is stale → auto-cancel and show Free.
+//
+// Production stores:
+//   activeSubscriptions is authoritative. Shopify properly cancels real
+//   subscriptions when the merchant downgrades, so the API is reliable.
 
 // ─── Loader ──────────────────────────────────────────────────────────────────
 
@@ -87,43 +91,76 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   try {
     const { appInstallationId, subs, isDevStore } = await getSubscriptionStatus(admin);
-
-    const isProFromAPI = subs.some((s) =>
-      ["ACTIVE", "TRIALING"].includes(s.status)
-    );
-
+    const isProFromAPI = subs.some((s) => ["ACTIVE", "TRIALING"].includes(s.status));
     const planHandleLower = (planHandleParam ?? "").toLowerCase();
+
     let isPro: boolean;
 
     if (planHandleLower === "free") {
-      // ── Explicit Free redirect from Shopify pricing page ──────────────────
-      // Shopify does NOT auto-cancel test subscriptions on dev stores when the
-      // merchant selects Free. Cancel them here so subsequent loads are correct.
+      // ── Explicit downgrade via Shopify pricing page redirect ──────────────
       isPro = false;
       if (subs.length > 0) {
         console.log(`[billing] plan_handle=free — cancelling ${subs.length} sub(s) for ${session.shop}`);
         await cancelAllSubscriptions(admin, subs);
       }
+      await setShopPlan(session.shop, "free");
+
     } else if (planHandleLower === "pro") {
-      // ── Explicit Pro redirect from Shopify pricing page ───────────────────
+      // ── Explicit upgrade via Shopify pricing page redirect ────────────────
       // Trust immediately on dev stores (API may lag after test sub creation).
       // On production stores verify with the live API first.
       isPro = isDevStore ? true : isProFromAPI;
+      if (isPro) {
+        // Record the exact time Pro was granted. Used on regular loads to
+        // distinguish fresh subscriptions from stale test ones.
+        await recordProGrant(session.shop);
+      }
+
     } else {
       // ── Regular page load (no plan_handle) ───────────────────────────────
-      // Use activeSubscriptions as the source of truth.
-      isPro = isProFromAPI;
+      if (!isDevStore) {
+        // Production: activeSubscriptions is the authoritative source of truth.
+        isPro = isProFromAPI;
+        await setShopPlan(session.shop, isPro ? "pro" : "free");
+
+      } else {
+        // Dev store: activeSubscriptions can lie (test sub stays ACTIVE even
+        // after the merchant picks Free on the pricing page). Use the
+        // pro_granted_at timestamp to decide if the active subscription is
+        // fresh (legit upgrade) or stale (should be Free).
+        const PRO_GRANT_TTL_SECONDS = 2 * 60 * 60; // 2 hours
+        const proGrantedAt = await getProGrantedAt(session.shop);
+        const now = Math.floor(Date.now() / 1000);
+        const grantIsFresh =
+          proGrantedAt !== null && now - proGrantedAt < PRO_GRANT_TTL_SECONDS;
+
+        if (isProFromAPI && grantIsFresh) {
+          // Subscription is active AND was recently granted — user is on Pro.
+          isPro = true;
+          console.log(`[billing] dev fresh grant (${now - proGrantedAt!}s ago) → Pro`);
+        } else if (isProFromAPI && !grantIsFresh) {
+          // Subscription is active but the grant is old / missing — stale test
+          // subscription. Auto-cancel it and show Free.
+          console.log(`[billing] dev stale subscription (grant=${proGrantedAt}) — auto-cancelling`);
+          await cancelAllSubscriptions(admin, subs);
+          isPro = false;
+        } else {
+          // No active subscription → Free.
+          isPro = false;
+        }
+
+        await setShopPlan(session.shop, isPro ? "pro" : "free");
+      }
     }
 
-    await setShopPlan(session.shop, isPro ? "pro" : "free");
     await updatePlanMetafield(admin, appInstallationId, isPro);
 
     console.log(
       `[billing] shop=${session.shop} dev=${isDevStore} plan_handle="${planHandleParam}" ` +
-      `subs=${subs.length} isProFromAPI=${isProFromAPI} → isPro=${isPro}`
+      `subs=${subs.length} → isPro=${isPro}`
     );
 
-    return json({ isPro, justChangedPlan, pricingUrl, isDevStore });
+    return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
     console.error("[billing] GraphQL failed, using cached plan:", err);
     const storedPlan = await getShopPlan(session.shop);
@@ -131,7 +168,6 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       isPro: (storedPlan ?? "free").toLowerCase() === "pro",
       justChangedPlan,
       pricingUrl,
-      isDevStore: false,
     });
   }
 };
@@ -139,8 +175,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 // ─── UI ──────────────────────────────────────────────────────────────────────
 
 export default function BillingPage() {
-  const { isPro, justChangedPlan, pricingUrl, isDevStore } =
-    useLoaderData<typeof loader>();
+  const { isPro, justChangedPlan, pricingUrl } = useLoaderData<typeof loader>();
 
   const goToPricingPage = () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -162,24 +197,6 @@ export default function BillingPage() {
       {justChangedPlan && !isPro && (
         <Banner tone="info" title="Switched to Free">
           <p>You&apos;re now on the Free plan. You can upgrade again any time.</p>
-        </Banner>
-      )}
-
-      {/* Self-healing banner — only shown on dev stores when plan is out of sync.
-          On production stores activeSubscriptions is always authoritative. */}
-      {isDevStore && isPro && (
-        <Banner tone="warning" title="Shopify shows Free as your current plan?">
-          <BlockStack gap="200">
-            <p>
-              If the Shopify pricing page already shows <strong>Free</strong> as
-              current but this page still shows Pro, click below to sync.
-            </p>
-            <Form method="post">
-              <Button submit variant="plain" tone="critical">
-                Force sync to Free
-              </Button>
-            </Form>
-          </BlockStack>
         </Banner>
       )}
 
