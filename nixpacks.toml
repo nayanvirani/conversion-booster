@@ -2,9 +2,9 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.build]
-# Install ALL deps including devDependencies (needed for remix vite:build).
-# NODE_ENV=production causes npm ci to skip devDeps, so override it here.
-cmds = ["npm ci --include=dev", "npm run build"]
+# @remix-run/dev and vite are in dependencies (not devDependencies) so that
+# Railway's standard npm ci always installs them regardless of NODE_ENV.
+cmds = ["npm ci", "npm run build"]
 
 [start]
 cmd = "npm start"
