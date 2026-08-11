@@ -45,6 +45,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const planHandleParam = url.searchParams.get("plan_handle");
   const justChangedPlan = planHandleParam !== null;
 
+  // ?reset=1 is a dev-store escape hatch: forces plan to "free" immediately.
+  // Safe on dev stores (plan_handle is the source of truth there anyway).
+  if (url.searchParams.get("reset") === "1") {
+    await setShopPlan(session.shop, "free");
+    console.log(`[billing/loader] ?reset=1 — cleared plan for ${session.shop}`);
+    return redirect("/app/billing");
+  }
+
   const shopName = session.shop.replace(".myshopify.com", "");
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
