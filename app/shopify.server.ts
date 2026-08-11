@@ -2,6 +2,7 @@ import "@shopify/shopify-app-remix/adapters/node";
 import {
   ApiVersion,
   AppDistribution,
+  BillingInterval,
   DeliveryMethod,
   shopifyApp,
 } from "@shopify/shopify-app-remix/server";
@@ -10,8 +11,10 @@ const LATEST_API_VERSION = ApiVersion.July26;
 import { SQLiteSessionStorage } from "@shopify/shopify-app-session-storage-sqlite";
 import { join } from "path";
 
+// Plan handle as defined in the Shopify Partner Dashboard.
+// Used for billing.check() on dev stores (activeSubscriptions excludes test subscriptions).
 export const PLANS = {
-  PRO: "Pro Plan",
+  PRO: "PRO",
 } as const;
 
 const shopify = shopifyApp({
@@ -25,9 +28,20 @@ const shopify = shopifyApp({
     process.env.DATABASE_PATH || join(process.cwd(), "database.sqlite")
   ),
   distribution: AppDistribution.AppStore,
-  // No billing config — this app uses Shopify Managed Pricing.
-  // Pricing is defined in the Partner Dashboard; billing.request() is blocked.
-  // Use billing.check() to read current subscription status.
+  // Billing config enables billing.check() so we can verify plan status.
+  // billing.request() is still handled by Shopify Managed Pricing (Partner Dashboard).
+  // The amount/interval here are metadata only — Shopify ignores them for managed pricing.
+  billing: {
+    [PLANS.PRO]: {
+      lineItems: [
+        {
+          amount: 9.99,
+          currencyCode: "USD",
+          interval: BillingInterval.Every30Days,
+        },
+      ],
+    },
+  },
   webhooks: {
     APP_UNINSTALLED: {
       deliveryMethod: DeliveryMethod.Http,

@@ -15,10 +15,11 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
+import { PLANS } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, billing, session } = await authenticate.admin(request);
 
   // Shopify App Pricing redirects after plan selection with ?plan_handle=<handle>.
   // Forward to the billing page where the subscription is verified via GraphQL
@@ -53,8 +54,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
     let isPro: boolean;
     if (isDevStore) {
-      const storedPlan = await getShopPlan(session.shop);
-      isPro = (storedPlan ?? "free").toLowerCase() === "pro";
+      // Dev store: activeSubscriptions never includes test subscriptions.
+      // Use billing.check({ isTest: true }) — designed for test subscriptions.
+      try {
+        const check = await billing.check({ plans: [PLANS.PRO], isTest: true });
+        isPro = check.hasActivePayment;
+      } catch {
+        // Fall back to cached SQLite if billing.check unavailable.
+        const storedPlan = await getShopPlan(session.shop);
+        isPro = (storedPlan ?? "free").toLowerCase() === "pro";
+      }
+      await setShopPlan(session.shop, isPro ? "pro" : "free");
     } else {
       isPro = subs.some((s) => ["ACTIVE", "TRIALING"].includes(s.status));
       await setShopPlan(session.shop, isPro ? "pro" : "free");

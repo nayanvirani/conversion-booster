@@ -15,23 +15,28 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
+import { PLANS } from "../shopify.server";
 import { getShopPlan, setShopPlan } from "../db.server";
 
 // Plan detection strategy:
 //
-// PRODUCTION stores  → activeSubscriptions is authoritative. Write to SQLite on
-//                      every load so home page has a fresh cached value.
+// PRODUCTION stores  → activeSubscriptions is authoritative (real paid subscriptions
+//                      always appear here). Write to SQLite on every load.
 //
-// DEV stores         → Shopify never includes test subscriptions in
-//                      activeSubscriptions, so the API always returns [].
-//                      The only reliable signal is plan_handle from Shopify's
-//                      own post-selection redirect. We write that to SQLite and
-//                      read it on subsequent loads.
+// DEV stores         → activeSubscriptions NEVER includes test subscriptions (Shopify
+//                      platform restriction). Two complementary signals instead:
 //
-// In both cases plan_handle=free is honoured as an explicit downgrade signal.
+//   1. plan_handle from Shopify's redirect (fires after any plan selection).
+//      Writes directly to SQLite. Highest priority.
+//
+//   2. billing.check({ isTest: true }) on every load — designed specifically to
+//      detect test subscriptions. If it says no active payment → Free, even if
+//      SQLite says Pro (handles the stale-Pro case when downgrading).
+//
+//   plan_handle=free from a redirect always wins (explicit downgrade signal).
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { admin, billing, session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const planHandleParam = url.searchParams.get("plan_handle");
@@ -62,28 +67,42 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     let isPro: boolean;
 
     if (isDevStore) {
-      // Dev store: activeSubscriptions never includes test subscriptions.
-      // Trust plan_handle from Shopify's redirect → write to SQLite.
-      // Subsequent loads (no plan_handle) read SQLite; default to "free".
+      // Step 1: If Shopify just sent a plan_handle redirect, write it immediately.
       if (planHandleParam) {
         await setShopPlan(session.shop, planHandleParam.toLowerCase());
+        isPro = planHandleParam.toLowerCase() === "pro";
+        console.log(`[billing] DEV plan_handle="${planHandleParam}" → isPro=${isPro}`);
+      } else {
+        // Step 2: No redirect param — use billing.check({ isTest: true }) to get
+        // the live state. This is the only API that sees test subscriptions.
+        let billingCheckPro = false;
+        try {
+          const check = await billing.check({
+            plans: [PLANS.PRO],
+            isTest: true,
+          });
+          billingCheckPro = check.hasActivePayment;
+          console.log(`[billing] DEV billing.check isTest=true → hasActivePayment=${billingCheckPro}`);
+        } catch (billingErr) {
+          // billing.check unavailable — fall back to SQLite cache.
+          console.warn("[billing] billing.check failed:", billingErr);
+          const storedPlan = await getShopPlan(session.shop);
+          billingCheckPro = (storedPlan ?? "free").toLowerCase() === "pro";
+        }
+        isPro = billingCheckPro;
+        // Keep SQLite in sync with the live check result.
+        await setShopPlan(session.shop, isPro ? "pro" : "free");
       }
-      const storedPlan = await getShopPlan(session.shop);
-      isPro = (storedPlan ?? "free").toLowerCase() === "pro";
     } else {
-      // Production store: activeSubscriptions is the source of truth.
+      // Production store: activeSubscriptions is authoritative.
       const isProFromAPI = subs.some((s) =>
         ["ACTIVE", "TRIALING"].includes(s.status)
       );
-      // plan_handle=free is a reliable explicit downgrade signal even if
-      // the billing period hasn't ended yet.
+      // plan_handle=free is an explicit downgrade signal even during billing-period lag.
       isPro = planHandleParam === "free" ? false : isProFromAPI;
       await setShopPlan(session.shop, isPro ? "pro" : "free");
+      console.log(`[billing] PROD subs=${subs.length} plan_handle="${planHandleParam}" → isPro=${isPro}`);
     }
-
-    console.log(
-      `[billing] isDevStore=${isDevStore} plan_handle="${planHandleParam}" subs=${subs.length} → isPro=${isPro}`
-    );
 
     return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
