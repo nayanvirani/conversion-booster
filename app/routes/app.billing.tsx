@@ -15,6 +15,7 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate, PLANS } from "../shopify.server";
+import { getShopPlan, setShopPlan } from "../db.server";
 
 // Shopify App Pricing (Managed Pricing) — billing.request() is blocked.
 //
@@ -30,6 +31,12 @@ import { authenticate, PLANS } from "../shopify.server";
 // After plan selection, Shopify App Pricing redirects to the per-plan
 // "Welcome link" configured in Partner Dashboard. Set it to a relative
 // path like /billing so merchants land back on this page with ?plan_handle=<plan>.
+//
+// IMPORTANT: currentAppInstallation.activeSubscriptions only returns subscriptions
+// from the Shopify Billing API (billing.request()). Shopify App Pricing (Managed
+// Pricing) subscriptions are NOT returned there — you need the Partner API for that.
+// As a reliable alternative, we persist the plan_handle in SQLite when Shopify
+// sends it as a redirect URL param after plan selection.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -37,7 +44,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   // Shopify App Pricing sends ?plan_handle=<handle> after plan selection
   // (not charge_id — that's from the old Billing API).
-  const justUpgraded = url.searchParams.has("plan_handle");
+  const planHandleParam = url.searchParams.get("plan_handle");
+  const justUpgraded = planHandleParam !== null;
 
   // Build the pricing URL server-side.
   const shopName = session.shop.replace(".myshopify.com", "");
@@ -47,6 +55,17 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   // NOT the API key / client ID.
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
+
+  // If Shopify just redirected back with ?plan_handle=pro, persist it so future
+  // loads (without the param) also reflect the correct plan.
+  if (planHandleParam) {
+    await setShopPlan(session.shop, planHandleParam);
+    console.log(`[billing] Stored plan_handle="${planHandleParam}" for ${session.shop}`);
+  }
+
+  // Read the persisted plan (set above or from a previous session).
+  const storedPlanHandle = await getShopPlan(session.shop);
+  console.log(`[billing] storedPlanHandle="${storedPlanHandle}" for ${session.shop}`);
 
   try {
     const response = await admin.graphql(`
@@ -70,14 +89,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       trialDays: number;
     }> = data.data?.currentAppInstallation?.activeSubscriptions ?? [];
 
-    const isPro = activeSubscriptions.some(
-      (sub) => sub.name === PLANS.PRO && sub.status === "ACTIVE"
+    console.log("[billing] activeSubscriptions:", JSON.stringify(activeSubscriptions));
+
+    // isPro: check Admin GraphQL (works if the shop has a Billing API subscription)
+    // OR trust the persisted plan_handle from Shopify App Pricing redirect.
+    const isProFromGraphQL = activeSubscriptions.some(
+      (sub) =>
+        sub.name === PLANS.PRO &&
+        ["ACTIVE", "TRIALING"].includes(sub.status)
     );
+    const isProFromStoredPlan = storedPlanHandle?.toLowerCase() === "pro";
+    const isPro = isProFromGraphQL || isProFromStoredPlan;
+
+    console.log(`[billing] isPro=${isPro} (graphql=${isProFromGraphQL}, stored=${isProFromStoredPlan})`);
 
     return json({ isPro, subscriptions: activeSubscriptions, justUpgraded, pricingUrl });
   } catch (err) {
     console.error("[billing] Failed to query subscription status:", err);
-    return json({ isPro: false, subscriptions: [], justUpgraded: false, pricingUrl });
+    // Still use stored plan as fallback even if GraphQL fails.
+    const isPro = storedPlanHandle?.toLowerCase() === "pro";
+    return json({ isPro, subscriptions: [], justUpgraded, pricingUrl });
   }
 };
 
