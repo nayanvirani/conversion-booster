@@ -53,28 +53,22 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const isDevStore: boolean =
       data.data?.shop?.plan?.partnerDevelopment ?? false;
 
-    const isProFromAPI = subs.some((s) =>
+    const apiSaysPro = subs.some((s) =>
       ["ACTIVE", "TRIALING"].includes(s.status)
     );
 
-    // Same logic as the billing page loader (see app.billing.tsx for details).
+    // Mirror the same logic as the billing page (app.billing.tsx).
+    // On dev stores, check grant freshness to detect stale test subscriptions.
+    // Actual cancellation happens on the billing page; here we just read the result.
     let isPro: boolean;
     if (!isDevStore) {
-      isPro = isProFromAPI;
+      isPro = apiSaysPro;
+    } else if (!apiSaysPro) {
+      isPro = false;
     } else {
-      const PRO_GRANT_TTL_SECONDS = 2 * 60 * 60; // 2 hours
-      const proGrantedAt = await getProGrantedAt(session.shop);
-      const now = Math.floor(Date.now() / 1000);
-      const grantIsFresh =
-        proGrantedAt !== null && now - proGrantedAt < PRO_GRANT_TTL_SECONDS;
-
-      if (isProFromAPI && grantIsFresh) {
-        isPro = true;
-      } else {
-        // Stale or no grant — default to Free.
-        // (Cancelling stale subs is handled by the billing page on next visit.)
-        isPro = false;
-      }
+      const grantedAt = await getProGrantedAt(session.shop);
+      const age = grantedAt ? Math.floor(Date.now() / 1000) - grantedAt : Infinity;
+      isPro = age < 2 * 60 * 60; // Pro only if grant is < 2 h old
     }
 
     await setShopPlan(session.shop, isPro ? "pro" : "free");
