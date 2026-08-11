@@ -15,10 +15,10 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { getShopPlan, setShopPlan } from "../db.server";
+import { setShopPlan } from "../db.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { billing, session } = await authenticate.admin(request);
 
   // Shopify App Pricing redirects after plan selection with ?plan_handle=<handle>.
   // Forward to the billing page where the subscription is verified via GraphQL
@@ -29,61 +29,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     return redirect(`/app/billing?${params}`);
   }
 
-  // Query subscription status + store type in one call.
-  // Dev stores always return [] for activeSubscriptions (Shopify restriction) —
-  // fall back to SQLite (written by the billing page from plan_handle redirects).
-  // Production stores: activeSubscriptions is authoritative.
+  // billing.check({ isTest: true }) is the single source of truth.
+  //   isTest:true  → counts test subscriptions (dev store "Test with this plan")
+  //   isTest:false → ignores test subscriptions (always returned false on dev stores)
+  // No URL parameter is used to determine plan status — billing API only.
   try {
-    const response = await admin.graphql(`
-      #graphql
-      query GetSubscriptionStatus {
-        currentAppInstallation {
-          activeSubscriptions {
-            id
-            status
-          }
-        }
-        shop {
-          plan {
-            partnerDevelopment
-          }
-        }
-      }
-    `);
-    const data = await response.json();
-    const subs: Array<{ id: string; status: string }> =
-      data.data?.currentAppInstallation?.activeSubscriptions ?? [];
-    const isDevStore: boolean =
-      data.data?.shop?.plan?.partnerDevelopment ?? false;
+    const { hasActivePayment } = await billing.check({ isTest: true });
 
-    const isProFromShopify = subs.some((s) =>
-      ["ACTIVE", "TRIALING"].includes(s.status)
-    );
+    // Sync SQLite for admin panel display (not used for access control here).
+    setShopPlan(session.shop, hasActivePayment ? "pro" : "free");
 
-    let isPro: boolean;
-    if (isProFromShopify) {
-      // Production store with confirmed active subscription.
-      isPro = true;
-    } else if (isDevStore) {
-      // Dev store: Shopify never returns subscriptions, so read SQLite.
-      // SQLite is written by the billing page from Shopify's plan_handle redirect.
-      const storedPlan = await getShopPlan(session.shop);
-      isPro = storedPlan?.toLowerCase() === "pro";
-    } else {
-      // Production store, no active subscription → Free.
-      isPro = false;
-    }
-
-    // Keep SQLite in sync on production stores.
-    if (!isDevStore) {
-      setShopPlan(session.shop, isPro ? "pro" : "free");
-    }
-
-    return json({ isPro });
+    return json({ isPro: hasActivePayment });
   } catch {
-    // GraphQL failed — fall back to SQLite.
-    const storedPlan = await getShopPlan(session.shop);
-    return json({ isPro: storedPlan?.toLowerCase() === "pro" });
+    return json({ isPro: false });
   }
 };
 

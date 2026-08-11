@@ -15,110 +15,53 @@ import {
   Text,
 } from "@shopify/polaris";
 import { authenticate } from "../shopify.server";
-import { getShopPlan, setShopPlan } from "../db.server";
+import { setShopPlan } from "../db.server";
 
-// Shopify App Pricing — subscription status strategy:
+// Shopify App Pricing — plan status is determined EXCLUSIVELY by billing.check().
 //
-// Production stores:
-//   currentAppInstallation.activeSubscriptions returns the real subscription.
-//   Empty = Free. ACTIVE/TRIALING = Pro. Source of truth.
+// billing.check({ isTest: true }) works on BOTH store types:
+//   - Production stores: real subscriptions are counted.
+//   - Dev / partner stores: test subscriptions ("Test with this plan") are
+//     counted because isTest:true accepts them. With isTest:false (our previous
+//     approach) dev store subscriptions were silently excluded, always returning
+//     hasActivePayment=false.
 //
-// Dev / partner-development stores:
-//   Shopify ALWAYS returns [] for activeSubscriptions regardless of plan.
-//   This is a Shopify platform restriction on dev stores.
-//   We fall back to plan_handle (from Shopify's redirect) + SQLite cache.
-//
-// Security: plan_handle=pro is only trusted on dev stores (Shopify restriction
-// forces the fallback). On production, activeSubscriptions is authoritative and
-// a fake plan_handle=pro in the URL is ignored (no real subscription = no Pro).
-
-async function getSubscriptionStatus(admin: any) {
-  const response = await admin.graphql(`
-    #graphql
-    query GetSubscriptionStatus {
-      currentAppInstallation {
-        activeSubscriptions {
-          id
-          status
-        }
-      }
-      shop {
-        plan {
-          partnerDevelopment
-        }
-      }
-    }
-  `);
-  const data = await response.json();
-  const subs: Array<{ id: string; status: string }> =
-    data.data?.currentAppInstallation?.activeSubscriptions ?? [];
-  const isDevStore: boolean =
-    data.data?.shop?.plan?.partnerDevelopment ?? false;
-
-  return { subs, isDevStore };
-}
+// The ?plan_handle URL parameter is NEVER used to determine isPro.
+// It is only used to show the correct post-selection banner (Welcome / Switched)
+// and to sync the SQLite cache used by the admin panel.
+// A fake ?plan_handle=pro in the URL gains nothing — billing.check() from
+// Shopify's API is always the final word.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+  const { billing, session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
   const planHandleParam = url.searchParams.get("plan_handle");
   const justChangedPlan = planHandleParam !== null;
-
-  // Persist plan_handle when Shopify sends it (any plan selection).
-  if (planHandleParam) {
-    await setShopPlan(session.shop, planHandleParam);
-    console.log(`[billing] plan_handle="${planHandleParam}" for ${session.shop}`);
-  }
 
   const shopName = session.shop.replace(".myshopify.com", "");
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
   const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
 
   try {
-    const { subs, isDevStore } = await getSubscriptionStatus(admin);
-    const isProFromShopify = subs.some((s) =>
-      ["ACTIVE", "TRIALING"].includes(s.status)
-    );
+    // isTest:true so that test subscriptions on dev stores are counted.
+    // On production stores there are no test subscriptions, so this has no effect.
+    const { hasActivePayment } = await billing.check({ isTest: true });
+
+    // isPro comes solely from the Shopify billing API — not from any URL param.
+    const isPro = hasActivePayment;
+
+    // Persist to SQLite for the admin panel display (not used for access control).
+    setShopPlan(session.shop, isPro ? "pro" : "free");
 
     console.log(
-      `[billing] isDevStore=${isDevStore} subs=${JSON.stringify(subs)} plan_handle="${planHandleParam}"`
+      `[billing] isPro=${isPro} (billingCheck, plan_handle="${planHandleParam}" used only for banner)`
     );
 
-    let isPro: boolean;
-
-    if (planHandleParam === "free") {
-      // Explicit downgrade from Shopify — trust immediately on any store type.
-      isPro = false;
-    } else if (isProFromShopify) {
-      // Production store confirmed active subscription via API.
-      isPro = true;
-    } else if (isDevStore) {
-      // Dev store restriction: activeSubscriptions always empty.
-      // Fall back to plan_handle (trusted — Shopify generated the redirect)
-      // or SQLite (set from a previous plan_handle redirect this session).
-      if (planHandleParam === "pro") {
-        isPro = true;
-      } else {
-        const storedPlan = await getShopPlan(session.shop);
-        isPro = storedPlan?.toLowerCase() === "pro";
-      }
-    } else {
-      // Production store, no active subscription → Free.
-      isPro = false;
-    }
-
-    // Keep SQLite in sync with the resolved value.
-    await setShopPlan(session.shop, isPro ? "pro" : "free");
-
-    console.log(`[billing] isPro=${isPro}`);
     return json({ isPro, justChangedPlan, pricingUrl });
   } catch (err) {
-    console.error("[billing] GraphQL failed:", err);
-    // On error fall back to SQLite — do NOT grant Pro from URL alone.
-    const storedPlan = await getShopPlan(session.shop);
-    const isPro = storedPlan?.toLowerCase() === "pro";
-    return json({ isPro, justChangedPlan, pricingUrl });
+    console.error("[billing] billing.check() failed:", err);
+    return json({ isPro: false, justChangedPlan, pricingUrl });
   }
 };
 
@@ -126,6 +69,7 @@ export default function BillingPage() {
   const { isPro, justChangedPlan, pricingUrl } = useLoaderData<typeof loader>();
 
   const goToPricingPage = () => {
+    // App Bridge v4 postMessage navigation — no user-gesture restriction.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const shopify = (window as any).shopify;
     if (shopify?.redirectTo) {
