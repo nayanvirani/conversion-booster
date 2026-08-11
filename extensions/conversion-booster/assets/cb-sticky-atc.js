@@ -3,8 +3,23 @@
   var bar = document.querySelector('.cb-satc');
   if (!bar) return;
 
+  // Fire-and-forget analytics ping
+  function _cbTrack(eventType) {
+    var shop = bar.getAttribute('data-shop');
+    var url  = bar.getAttribute('data-track-url');
+    if (!shop || !url) return;
+    if (eventType === 'view') {
+      var k = 'cbt-satc';
+      try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (e) {}
+    }
+    var d = new URLSearchParams({ shop: shop, widget: 'satc', event: eventType });
+    if (navigator.sendBeacon) { navigator.sendBeacon(url, d); }
+    else { fetch(url, { method: 'POST', body: d }).catch(function () {}); }
+  }
+
   var mainForm = document.querySelector('form[action*="/cart/add"]');
   var trigger = mainForm || document.querySelector('main') || document.body;
+  var viewTracked = false;
 
   // Show the bar once the main buy area scrolls out of view
   if ('IntersectionObserver' in window && mainForm) {
@@ -12,6 +27,8 @@
       var visible = entries[0].isIntersecting;
       bar.classList.toggle('cb-satc--visible', !visible);
       bar.setAttribute('aria-hidden', visible ? 'true' : 'false');
+      // Track first time the sticky bar becomes visible
+      if (!visible && !viewTracked) { viewTracked = true; _cbTrack('view'); }
     }, { threshold: 0 });
     io.observe(trigger);
   } else {
@@ -20,6 +37,7 @@
       var show = window.scrollY > window.innerHeight * 0.6;
       bar.classList.toggle('cb-satc--visible', show);
       bar.setAttribute('aria-hidden', show ? 'false' : 'true');
+      if (show && !viewTracked) { viewTracked = true; _cbTrack('view'); }
     };
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
@@ -38,7 +56,6 @@
   // Add to cart via AJAX
   var btn = bar.querySelector('[data-cb-add]');
   var originalText = btn ? btn.textContent : '';
-  var blockSettings = bar.closest('[data-after-add]');
 
   if (btn) {
     btn.addEventListener('click', function () {
@@ -46,6 +63,9 @@
       if (!id) return;
       btn.disabled = true;
       btn.textContent = 'Adding…';
+
+      // Track the click
+      _cbTrack('click');
 
       fetch(window.Shopify && window.Shopify.routes ? window.Shopify.routes.root + 'cart/add.js' : '/cart/add.js', {
         method: 'POST',

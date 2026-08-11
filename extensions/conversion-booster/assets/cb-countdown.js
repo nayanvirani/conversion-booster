@@ -2,6 +2,20 @@
 (function () {
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
 
+  // Fire-and-forget analytics ping
+  function _cbTrack(el, eventType) {
+    var shop = el.getAttribute('data-shop');
+    var url  = el.getAttribute('data-track-url');
+    if (!shop || !url) return;
+    if (eventType === 'view') {
+      var k = 'cbt-timer';
+      try { if (sessionStorage.getItem(k)) return; sessionStorage.setItem(k, '1'); } catch (e) {}
+    }
+    var d = new URLSearchParams({ shop: shop, widget: 'timer', event: eventType });
+    if (navigator.sendBeacon) { navigator.sendBeacon(url, d); }
+    else { fetch(url, { method: 'POST', body: d }).catch(function () {}); }
+  }
+
   document.querySelectorAll('.cb-count').forEach(function (el) {
     var mode = el.getAttribute('data-mode');
     var endMs;
@@ -22,6 +36,9 @@
       var parsed = new Date(el.getAttribute('data-end'));
       endMs = isNaN(parsed) ? 0 : parsed.getTime();
     }
+
+    // Track view
+    _cbTrack(el, 'view');
 
     var nums = {
       d: el.querySelector('[data-u="d"]'),

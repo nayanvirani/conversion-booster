@@ -4,3 +4,5 @@ build/
 database.sqlite
 .DS_Store
 .shopify/
+.claude/settings.local.json
+.mcp.json

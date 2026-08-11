@@ -9,7 +9,13 @@
 {%- if request.page_type == 'product' and product != blank -%}
 {{ 'cb-core.css' | asset_url | stylesheet_tag }}
 
-<div class="cb-satc" id="cb-satc-{{ block.id }}" aria-hidden="true">
+<div
+  class="cb-satc"
+  id="cb-satc-{{ block.id }}"
+  aria-hidden="true"
+  data-shop="{{ shop.permanent_domain }}"
+  data-track-url="https://conversion-booster-production.up.railway.app/api/track"
+>
   {%- if product.featured_image -%}
     <img class="cb-satc__img" src="{{ product.featured_image | image_url: width: 88 }}" alt="" width="44" height="44" loading="lazy">
   {%- endif -%}

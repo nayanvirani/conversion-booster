@@ -75,6 +75,17 @@
   {%- endif -%}
 </div>
 
+<script>
+(function(){
+  var k='cbt-trust';
+  try{if(sessionStorage.getItem(k))return;sessionStorage.setItem(k,'1');}catch(e){}
+  var d=new URLSearchParams({shop:"{{ shop.permanent_domain }}",widget:'trust',event:'view'});
+  var u='https://conversion-booster-production.up.railway.app/api/track';
+  if(navigator.sendBeacon){navigator.sendBeacon(u,d);}
+  else{fetch(u,{method:'POST',body:d}).catch(function(){});}
+})();
+</script>
+
 {% schema %}
 {
   "name": "Trust Badges",

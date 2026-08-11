@@ -18,6 +18,8 @@
   data-gap="{{ block.settings.gap_seconds | times: 1000 }}"
   data-show-ms="{{ block.settings.show_seconds | times: 1000 }}"
   data-max="{{ block.settings.max_popups }}"
+  data-shop="{{ shop.permanent_domain }}"
+  data-track-url="https://conversion-booster-production.up.railway.app/api/track"
 ></div>
 <script src="{{ 'cb-popup.js' | asset_url }}" defer></script>
 

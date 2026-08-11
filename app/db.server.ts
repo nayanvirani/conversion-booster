@@ -32,6 +32,21 @@ function db(): sqlite3.Database {
         `ALTER TABLE shop_plans ADD COLUMN pro_granted_at INTEGER`,
         () => {} // ignore "duplicate column" error — that's fine
       );
+      // Widget analytics events table.
+      _db!.run(`
+        CREATE TABLE IF NOT EXISTS widget_events (
+          id         INTEGER PRIMARY KEY AUTOINCREMENT,
+          shop       TEXT    NOT NULL,
+          widget     TEXT    NOT NULL,
+          event_type TEXT    NOT NULL,
+          date       TEXT    NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+      `);
+      _db!.run(
+        `CREATE INDEX IF NOT EXISTS we_shop_date ON widget_events(shop, date DESC)`,
+        () => {}
+      );
     });
   }
   return _db;
@@ -108,6 +123,80 @@ export function recordProGrant(shop: string): Promise<void> {
       (err) => {
         if (err) console.error("[db] recordProGrant error:", err);
         resolve();
+      }
+    );
+  });
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+/** Record a widget view or click event. Fire-and-forget (never throws). */
+export function trackWidgetEvent(
+  shop: string,
+  widget: string,
+  eventType: string
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+  return new Promise((resolve) => {
+    db().run(
+      `INSERT INTO widget_events (shop, widget, event_type, date, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [shop, widget, eventType, date, now],
+      (err) => {
+        if (err) console.error("[db] trackWidgetEvent error:", err);
+        resolve();
+      }
+    );
+  });
+}
+
+/** Total views + clicks per widget for a shop (all time). */
+export function getWidgetAnalytics(
+  shop: string
+): Promise<Array<{ widget: string; event_type: string; count: number }>> {
+  return new Promise((resolve) => {
+    db().all(
+      `SELECT widget, event_type, COUNT(*) AS count
+       FROM widget_events
+       WHERE shop = ?
+       GROUP BY widget, event_type`,
+      [shop],
+      (err, rows: Array<{ widget: string; event_type: string; count: number }>) => {
+        if (err) {
+          console.error("[db] getWidgetAnalytics error:", err);
+          resolve([]);
+        } else {
+          resolve(rows ?? []);
+        }
+      }
+    );
+  });
+}
+
+/** Daily view + click counts for the last N days (newest first). */
+export function getDailyAnalytics(
+  shop: string,
+  days = 7
+): Promise<Array<{ widget: string; event_type: string; date: string; count: number }>> {
+  return new Promise((resolve) => {
+    db().all(
+      `SELECT widget, event_type, date, COUNT(*) AS count
+       FROM widget_events
+       WHERE shop = ? AND date >= date('now', ?)
+       GROUP BY widget, event_type, date
+       ORDER BY date DESC`,
+      [shop, `-${days - 1} days`],
+      (
+        err,
+        rows: Array<{ widget: string; event_type: string; date: string; count: number }>
+      ) => {
+        if (err) {
+          console.error("[db] getDailyAnalytics error:", err);
+          resolve([]);
+        } else {
+          resolve(rows ?? []);
+        }
       }
     );
   });

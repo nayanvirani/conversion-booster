@@ -21,6 +21,8 @@
   data-messages="{{ messages | escape }}"
   data-interval="{{ block.settings.rotate_seconds | times: 1000 }}"
   data-position="{{ block.settings.position }}"
+  data-shop="{{ shop.permanent_domain }}"
+  data-track-url="https://conversion-booster-production.up.railway.app/api/track"
   {% if block.settings.msg_2 != blank %}data-rotating{% endif %}
   role="region"
   aria-label="Announcement"
