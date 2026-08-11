@@ -16,40 +16,37 @@ import {
 } from "@shopify/polaris";
 import { authenticate, PLANS } from "../shopify.server";
 
-// Managed Pricing app — billing.request() is blocked by Shopify.
+// Shopify App Pricing (Managed Pricing) — billing.request() is blocked.
 //
-// Navigation to the pricing page MUST happen synchronously inside the onClick
-// user-gesture handler. Any intermediate navigation (window.location.href,
-// Remix form POST, exit-iframe redirect) consumes the user-gesture activation
-// before window.open(_top) runs, causing the browser to block the top-level
-// navigation and Shopify admin to fall back to the app index page.
+// Navigation to the pricing page must use window.shopify.redirectTo(url),
+// which is the App Bridge v4 API for top-frame navigation. It works via
+// postMessage to the parent Shopify admin frame — no user-gesture restriction,
+// no sandbox permission issue. This is the same mechanism used internally by
+// @shopify/shopify-app-remix's respondToExitIframeRequest().
 //
-// Solution: window.open(pricingUrl, "_top") called directly in onClick.
-// The Shopify embedded iframe allows allow-top-navigation-by-user-activation,
-// so a synchronous window.open within the click handler navigates the parent
-// Shopify admin frame to the Managed Pricing plan selection page.
+// window.open(url, "_top") was tried first but App Bridge intercepts it and
+// the navigation was silently redirected to settings/apps.
+//
+// After plan selection, Shopify App Pricing redirects to the per-plan
+// "Welcome link" configured in Partner Dashboard. Set it to a relative
+// path like /billing so merchants land back on this page with ?plan_handle=<plan>.
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
   const url = new URL(request.url);
-  const justUpgraded = url.searchParams.has("charge_id");
+  // Shopify App Pricing sends ?plan_handle=<handle> after plan selection
+  // (not charge_id — that's from the old Billing API).
+  const justUpgraded = url.searchParams.has("plan_handle");
 
   // Build the pricing URL server-side.
   const shopName = session.shop.replace(".myshopify.com", "");
 
-  // Shopify's pricing_plans URL uses the APP HANDLE (e.g. "conversion-booster-11"),
-  // NOT the API key / client ID. Using the client ID causes Shopify to redirect to
-  // settings/apps instead of showing the plan selector.
-  //
-  // The handle is visible in: admin.shopify.com/store/{shop}/apps/conversion-booster-11
-  // It is the same for every merchant store — it's a global app identifier.
+  // Shopify's pricing_plans URL uses the APP HANDLE visible in:
+  //   admin.shopify.com/store/{shop}/apps/conversion-booster-11
+  // NOT the API key / client ID.
   const appHandle = process.env.SHOPIFY_APP_HANDLE || "conversion-booster-11";
-
-  // return_url must be a Shopify admin URL (external URLs like Railway are rejected).
-  // After plan selection, Shopify appends ?charge_id=xxx and redirects here.
-  const returnUrl = `https://admin.shopify.com/store/${shopName}/apps/${appHandle}/billing`;
-  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans?return_url=${encodeURIComponent(returnUrl)}`;
+  const pricingUrl = `https://admin.shopify.com/store/${shopName}/charges/${appHandle}/pricing_plans`;
 
   try {
     const response = await admin.graphql(`
@@ -87,10 +84,19 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 export default function BillingPage() {
   const { isPro, justUpgraded, pricingUrl } = useLoaderData<typeof loader>();
 
-  // Called synchronously inside the click handler — user-gesture activation
-  // is still live, so the browser allows the top-level frame navigation.
   const goToPricingPage = () => {
-    window.open(pricingUrl, "_top");
+    // App Bridge v4 exposes window.shopify.redirectTo() which uses postMessage
+    // to navigate the parent Shopify admin frame. This is the correct method
+    // for embedded apps — it does not require a user gesture and is not
+    // intercepted/blocked unlike window.open(url, "_top").
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const shopify = (window as any).shopify;
+    if (shopify?.redirectTo) {
+      shopify.redirectTo(pricingUrl);
+    } else {
+      // Fallback for non-embedded / testing contexts
+      window.open(pricingUrl, "_top");
+    }
   };
 
   return (
